@@ -264,7 +264,7 @@ final class MetricEngine
                 'start' => $cursor->format('Y-m-d'),
                 'total_calls' => 0, 'volunteer_routed_calls' => 0, 'answered_calls' => 0,
                 'voicemail_calls' => 0, 'meeting_lookup_actions' => 0, 'sms_meeting_lookups' => 0,
-                'jft' => 0, 'spad' => 0,
+                'jft' => 0, 'spad' => 0, 'not_recorded' => 0,
             ];
             $cursor = $this->nextBucket($cursor, $granularity);
         }
@@ -280,6 +280,9 @@ final class MetricEngine
             $inc($buckets, $k, 'total_calls');
             if ($s['routed']) {
                 $inc($buckets, $k, 'volunteer_routed_calls');
+            }
+            if ($s['answer_status'] === 'outcome_not_recorded') {
+                $inc($buckets, $k, 'not_recorded');
             }
             if ($s['answered']) {
                 $inc($buckets, $k, 'answered_calls');
@@ -328,7 +331,9 @@ final class MetricEngine
             foreach (array_keys($unavailable) as $field) {
                 $row[$field] = null;
             }
-            $row['answer_rate'] = isset($unavailable['answered_calls']) ? null : self::pct((int) $row['answered_calls'], (int) $row['volunteer_routed_calls']);
+            // Same definition as the summary: calls whose outcome YAP did not record are left out.
+            $row['answer_rate'] = isset($unavailable['answered_calls']) ? null : self::pct((int) $row['answered_calls'], (int) $row['volunteer_routed_calls'] - (int) $row['not_recorded']);
+            unset($row['not_recorded']);
         }
         unset($row);
 
@@ -347,8 +352,8 @@ final class MetricEngine
     public function distributions(): array
     {
         $tz = $this->range->timezone;
-        $hours = array_fill(0, 24, ['calls' => 0, 'routed' => 0, 'answered' => 0]);
-        $days = array_fill(0, 7, ['calls' => 0, 'routed' => 0, 'answered' => 0]);
+        $hours = array_fill(0, 24, ['calls' => 0, 'routed' => 0, 'answered' => 0, 'not_recorded' => 0]);
+        $days = array_fill(0, 7, ['calls' => 0, 'routed' => 0, 'answered' => 0, 'not_recorded' => 0]);
         foreach ($this->calls() as $s) {
             $local = (new DateTimeImmutable('@' . $s['start']))->setTimezone($tz);
             $h = (int) $local->format('G');
@@ -358,6 +363,10 @@ final class MetricEngine
             if ($s['routed']) {
                 $hours[$h]['routed']++;
                 $days[$d]['routed']++;
+            }
+            if ($s['answer_status'] === 'outcome_not_recorded') {
+                $hours[$h]['not_recorded']++;
+                $days[$d]['not_recorded']++;
             }
             if ($s['answered']) {
                 $hours[$h]['answered']++;
@@ -369,14 +378,14 @@ final class MetricEngine
         foreach ($hours as $h => $v) {
             $byHour[] = ['hour' => $h, 'calls' => $v['calls'], 'volunteer_routed_calls' => $v['routed'],
                 'answered_calls' => $answeredOk ? $v['answered'] : null,
-                'answer_rate' => $answeredOk ? self::pct($v['answered'], $v['routed']) : null];
+                'answer_rate' => $answeredOk ? self::pct($v['answered'], $v['routed'] - $v['not_recorded']) : null];
         }
         $names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         $byDay = [];
         foreach ($days as $d => $v) {
             $byDay[] = ['weekday' => $d, 'name' => $names[$d], 'calls' => $v['calls'], 'volunteer_routed_calls' => $v['routed'],
                 'answered_calls' => $answeredOk ? $v['answered'] : null,
-                'answer_rate' => $answeredOk ? self::pct($v['answered'], $v['routed']) : null];
+                'answer_rate' => $answeredOk ? self::pct($v['answered'], $v['routed'] - $v['not_recorded']) : null];
         }
         $peak = null;
         $max = 0;

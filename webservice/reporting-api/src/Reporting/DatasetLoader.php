@@ -258,6 +258,7 @@ final class DatasetLoader
         }
         $readPayload = (bool) $this->config->get('yap_schema.read_direction_from_payload', true) && $this->schema->has('records', 'payload');
         $cols[] = $readPayload ? 'payload' : 'NULL AS payload';
+        $cols[] = $this->schema->has('records', 'type') ? 'type AS rtype' : 'NULL AS rtype';
 
         [$idSql, $idParams] = $this->idRange('records', 'start_time', $from, $to);
         if ($idSql === null) {
@@ -268,6 +269,11 @@ final class DatasetLoader
         foreach ($this->db->select($sql, array_merge([$this->fmt($from), $this->fmt($to)], $idParams)) as $row) {
             $cs = (string) ($row['callsid'] ?? '');
             if ($cs === '') {
+                continue;
+            }
+            // YAP's smsGateway() writes a records row for every inbound text message (type 2, the SmsSid as callsid).
+            // A text is not a call: counting it made every message a "call that ended before a selection".
+            if ((isset($row['rtype']) && (int) $row['rtype'] === 2) || preg_match('/^(SM|MM)[0-9a-f]{32}$/', $cs) === 1) {
                 continue;
             }
             $out[] = [

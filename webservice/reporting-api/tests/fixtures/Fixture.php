@@ -161,7 +161,9 @@ final class Fixture
         self::event($pdo, 'CA_FWD', $id('VOLUNTEER_SEARCH'), '2026-06-10 22:00:10', 50);
         self::event($pdo, 'CA_FWD', $id('HELPLINE_ROUTE'), '2026-06-10 22:00:11', 50, ['helpline_number' => '5555550199', 'extension' => 'w']);
 
-        // SMS meeting search.
+        // SMS meeting search. YAP's smsGateway() also writes a records row (type 2) for every inbound text: not a call.
+        $pdo->prepare('INSERT INTO records (callsid, from_number, to_number, duration, start_time, end_time, payload, type) VALUES (?,?,?,?,?,?,?,2)')
+            ->execute(['SM_1', self::CALLER_NUMBER, self::HELPLINE, 0, '2026-06-10 19:00:00', '2026-06-10 19:00:00', json_encode(['SmsSid' => 'SM_1', 'Body' => '00000'])]);
         self::event($pdo, 'SM_1', $id('MEETING_SEARCH_SMS'), '2026-06-10 19:00:00', 10);
         // Production logs MEETING_SEARCH_LOCATION_GATHERED for texts too (type 2); it must not become a "call".
         self::event($pdo, 'SM_1', $id('MEETING_SEARCH_LOCATION_GATHERED'), '2026-06-10 19:00:00', null, ['gather' => '00000'], 2);

@@ -1,0 +1,123 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * Fake YAP backend: a YAP 4.5.2 database and installation folder with fictional, realistic activity, for testing
+ * the YAP Reporting Webservice and the WordPress plugin without a phone system.
+ *
+ *   fake-yap install-db  --db=fake_yap [--host=127.0.0.1 --port=3306 --admin-user=root --admin-pass=]
+ *                        [--user=yap --pass=yap] [--reader-user=yap_reader --reader-pass=yap_reader] [--fresh]
+ *   fake-yap seed        --db=fake_yap [--host --port --user --pass] [--end=YYYY-MM-DD|today] [--days=60] [--seed=1]
+ *                        [--tz=America/New_York]
+ *   fake-yap yap-root    --dir=/path/yap [--host --port --db --user --pass]
+ *   fake-yap expected    [--end --days --seed --tz] --from=YYYY-MM-DD --to=YYYY-MM-DD [--areas=1001,1002] [--unassigned]
+ *                        [--volunteers | --daily]
+ *   fake-yap bmlt-json
+ *
+ * install-db creates the database with YAP's schema and two accounts: --user with full rights on it (what YAP's own
+ * config.php holds, and what the reporting service reuses) and --reader-user, which may read only the tables and
+ * columns the reporting service is documented to read. Running the service as the reader proves it never touches
+ * users, sessions, alerts or the caller's number: MySQL refuses the query if it tries.
+ */
+
+if (PHP_SAPI !== 'cli') {
+    exit(1);
+}
+
+require __DIR__ . '/../src/YapWriter.php';
+require __DIR__ . '/../src/Scenario.php';
+require __DIR__ . '/../src/Installer.php';
+
+use FakeYap\Installer;
+use FakeYap\Scenario;
+
+$command = $argv[1] ?? 'help';
+$opt = [];
+foreach (array_slice($argv, 2) as $arg) {
+    if (preg_match('/^--([a-z\-]+)(?:=(.*))?$/', $arg, $m) === 1) {
+        $opt[$m[1]] = $m[2] ?? true;
+    } else {
+        fwrite(STDERR, "Unexpected argument: $arg\n");
+        exit(2);
+    }
+}
+$o = static fn (string $k, ?string $default = null): ?string => isset($opt[$k]) && $opt[$k] !== true ? (string) $opt[$k] : $default;
+$flag = static fn (string $k): bool => isset($opt[$k]);
+$ident = static function (string $v): string {
+    if (preg_match('/^[A-Za-z0-9_]{1,32}$/', $v) !== 1) {
+        fwrite(STDERR, "Not a safe name: $v\n");
+        exit(2);
+    }
+    return $v;
+};
+$pdo = static function (?string $db, string $user, string $pass) use ($o): PDO {
+    $dsn = sprintf('mysql:host=%s;port=%d;charset=utf8mb4', $o('host', '127.0.0.1'), (int) $o('port', '3306')) . ($db !== null ? ';dbname=' . $db : '');
+    return new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+};
+$scenario = static function () use ($o): Scenario {
+    $tz = $o('tz', 'America/New_York');
+    $end = $o('end', 'today');
+    $now = null;
+    if ($end === 'today') {
+        $end = (new DateTimeImmutable('now', new DateTimeZone($tz)))->format('Y-m-d');
+        $now = time();
+    }
+    return new Scenario($end, (int) $o('days', '60'), (int) $o('seed', '1'), $tz, $o('now') !== null ? (int) $o('now') : $now);
+};
+
+switch ($command) {
+    case 'install-db':
+        $db = $ident((string) $o('db', 'fake_yap'));
+        $user = $ident((string) $o('user', 'yap'));
+        $reader = $ident((string) $o('reader-user', 'yap_reader'));
+        $admin = $pdo(null, (string) $o('admin-user', 'root'), (string) $o('admin-pass', ''));
+        Installer::database($admin, $db, $user, (string) $o('pass', 'yap'), $reader, (string) $o('reader-pass', 'yap_reader'), $flag('fresh'));
+        fwrite(STDOUT, "Database $db created with YAP 4.5.2's schema; accounts $user (full) and $reader (reporting columns only).\n");
+        break;
+
+    case 'seed':
+        $db = $ident((string) $o('db', 'fake_yap'));
+        $s = $scenario();
+        $conn = $pdo($db, (string) $o('user', 'yap'), (string) $o('pass', 'yap'));
+        $rows = Installer::seed($conn, $s);
+        $zone = (string) $conn->query('SELECT @@session.time_zone')->fetchColumn();
+        fwrite(STDOUT, sprintf("Seeded %d rows: %d calls and messages from %s to %s UTC; database time zone %s.\n",
+            $rows, count($s->calls()), gmdate('Y-m-d H:i', $s->startTs()), gmdate('Y-m-d H:i', $s->endTs()), $zone));
+        break;
+
+    case 'yap-root':
+        $dir = rtrim((string) $o('dir', ''), '/');
+        if ($dir === '') {
+            fwrite(STDERR, "--dir is required\n");
+            exit(2);
+        }
+        Installer::yapRoot($dir, (string) $o('host', '127.0.0.1'), (int) $o('port', '3306'), (string) $o('db', 'fake_yap'), (string) $o('user', 'yap'), (string) $o('pass', 'yap'));
+        fwrite(STDOUT, "Fake YAP installation written to $dir (config.php, app/Constants/EventId.php).\n");
+        break;
+
+    case 'expected':
+        $s = $scenario();
+        $tz = new DateTimeZone($o('tz', 'America/New_York'));
+        $from = (new DateTimeImmutable((string) $o('from', $s->endDate), $tz))->setTime(0, 0)->getTimestamp();
+        $to = (new DateTimeImmutable((string) $o('to', $s->endDate), $tz))->setTime(0, 0)->modify('+1 day')->getTimestamp();
+        $areas = $o('areas') !== null ? array_map('intval', explode(',', (string) $o('areas'))) : null;
+        $unassigned = $flag('unassigned');
+        $out = match (true) {
+            $flag('volunteers') => $s->expectedVolunteers($areas, $unassigned, $from, $to),
+            $flag('daily') => $s->expectedDaily($areas, $unassigned),
+            default => $s->expected($areas, $unassigned, $from, $to),
+        };
+        fwrite(STDOUT, json_encode($out, JSON_PRETTY_PRINT) . "\n");
+        break;
+
+    case 'bmlt-json':
+        fwrite(STDOUT, json_encode(Scenario::bmltServiceBodies(), JSON_PRETTY_PRINT) . "\n");
+        break;
+
+    default:
+        $doc = (string) file_get_contents(__FILE__);
+        preg_match('#/\*(.*?)\*/#s', $doc, $m);
+        fwrite(STDOUT, preg_replace('/^ \* ?/m', '', trim($m[1] ?? '')) . "\n");
+}
