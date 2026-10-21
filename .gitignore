@@ -1,0 +1,11 @@
+/dist/
+/vendor/
+/.cache/
+/tmp/
+webservice/reporting-api/data/*
+!webservice/reporting-api/data/.gitkeep
+!webservice/reporting-api/data/.htaccess
+webservice/reporting-api/config/reporting-config.php
+webservice/reporting-api/config/setup-code.txt
+webservice/reporting-api/config/ENABLE_SETUP
+.phpunit.result.cache

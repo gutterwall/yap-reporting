@@ -1,0 +1,399 @@
+openapi: 3.0.3
+info:
+  title: YAP Reporting Webservice
+  version: 1.0.0
+  description: |
+    Read-only reporting API installed inside a YAP (Yet Another Phoneline) instance.
+    Never returns caller phone numbers, Twilio CallSids, SMS bodies or voicemail media.
+    Metrics unsupported by the installed YAP build are returned with `available: false` and a reason.
+servers:
+  - url: https://example.org/yap/reporting-api/api/v1
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "yapr_<client id>_<secret>"
+
+  parameters:
+    areas:
+      name: areas
+      in: query
+      description: Comma-separated BMLT service body ids; all must be within the client's scope.
+      schema: { type: string, pattern: '^\d{1,10}(,\d{1,10})*$' }
+    area_id:
+      name: area_id
+      in: query
+      schema: { type: integer, minimum: 1 }
+    include_unassigned:
+      name: include_unassigned
+      in: query
+      schema: { type: boolean }
+    period:
+      name: period
+      in: query
+      schema:
+        type: string
+        enum: [today, yesterday, 7d, 30d, 45d, 60d, 90d, this_week, last_week, this_month, last_month, this_quarter, last_quarter, this_year, last_year, custom]
+        default: 30d
+    start_date:
+      name: start_date
+      in: query
+      schema: { type: string, format: date }
+    end_date:
+      name: end_date
+      in: query
+      description: Inclusive.
+      schema: { type: string, format: date }
+    timezone:
+      name: timezone
+      in: query
+      schema: { type: string, example: America/New_York }
+    compare:
+      name: compare
+      in: query
+      description: Include the immediately preceding period of equal length.
+      schema: { type: boolean }
+
+  schemas:
+    Metric:
+      type: object
+      required: [value, available, level]
+      properties:
+        value: { type: number, nullable: true }
+        available: { type: boolean }
+        level: { type: string, enum: [call, attempt, interaction, message] }
+        unit: { type: string, enum: [percent, seconds] }
+        reason: { type: string, description: Present when available is false. }
+        scope: { type: string, enum: [area, installation] }
+        partial: { type: boolean }
+    Meta:
+      type: object
+      properties:
+        generated_at: { type: string, format: date-time }
+        range:
+          type: object
+          properties:
+            period: { type: string }
+            start_date: { type: string, format: date }
+            end_date: { type: string, format: date }
+            start: { type: string, format: date-time }
+            end_exclusive: { type: string, format: date-time }
+            timezone: { type: string }
+            days: { type: integer }
+        service_bodies: { type: object }
+        answered_definition: { type: string }
+        cache_ttl_seconds: { type: integer }
+        api_version: { type: string }
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            request_id: { type: string }
+    VolunteerRef:
+      type: object
+      nullable: true
+      properties:
+        volunteer_id: { type: string, pattern: '^v_[0-9a-f]{16}$' }
+        name: { type: string, nullable: true, description: Only with the volunteer_names scope. }
+    Call:
+      type: object
+      properties:
+        id: { type: string, pattern: '^c_\d{8}_[0-9a-f]{20}$' }
+        started_at: { type: string, format: date-time }
+        date: { type: string, format: date }
+        time: { type: string }
+        service_body_id: { type: integer, nullable: true }
+        attribution: { type: string, enum: [routing_event, first_event, last_event, yap_call_cache, line_mapping, unassigned] }
+        category: { type: string, enum: [volunteer, voicemail, meeting_lookup, meditation, dialback, menu_only] }
+        outcome: { type: string, enum: [answered, voicemail, connected_short, connected_unknown_duration, not_answered, forwarded, not_routed, automated, dialback, ended_before_selection] }
+        volunteer_requested: { type: boolean }
+        routed_to_volunteers: { type: boolean }
+        volunteer_attempts: { type: integer }
+        answered: { type: boolean }
+        answer_status: { type: string, enum: [answered, connected_short, connected_unknown_duration, not_connected] }
+        duration_seconds: { type: integer, nullable: true }
+        conversation_seconds: { type: integer, nullable: true }
+        voicemail: { type: boolean }
+        meeting_lookups: { type: integer }
+        jft: { type: integer }
+        spad: { type: integer }
+        answered_by: { $ref: '#/components/schemas/VolunteerRef' }
+    CallDetail:
+      allOf:
+        - $ref: '#/components/schemas/Call'
+        - type: object
+          properties:
+            legs: { type: integer }
+            events:
+              type: array
+              items:
+                type: object
+                properties:
+                  at: { type: string, format: date-time }
+                  offset_seconds: { type: integer }
+                  event: { type: string }
+                  label: { type: string }
+                  leg: { type: string, enum: [caller, volunteer] }
+                  service_body_id: { type: integer, nullable: true }
+                  volunteer: { $ref: '#/components/schemas/VolunteerRef' }
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+paths:
+  /health:
+    get:
+      summary: Liveness check (no authentication)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string }
+                  api_version: { type: string }
+
+  /capabilities:
+    get:
+      summary: Detected YAP schema, events, metric availability and definitions (scope summary)
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /areas:
+    get:
+      summary: Service bodies with activity (scope summary; default period 90d)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/include_unassigned'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /summary:
+    get:
+      summary: Summary metrics (scope summary)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/area_id'
+        - $ref: '#/components/parameters/include_unassigned'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+        - $ref: '#/components/parameters/compare'
+        - name: group_by
+          in: query
+          schema: { type: string, enum: [service_body] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      metrics:
+                        type: object
+                        additionalProperties: { $ref: '#/components/schemas/Metric' }
+                      attribution: { type: object }
+                      previous_period: { type: object }
+                      by_service_body: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /trends:
+    get:
+      summary: Zero-filled time series (scope summary)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+        - $ref: '#/components/parameters/compare'
+        - name: granularity
+          in: query
+          schema: { type: string, enum: [day, week, month, quarter, year], default: day }
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /distributions:
+    get:
+      summary: Calls by hour and weekday (scope summary)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /area-dashboard:
+    get:
+      summary: Compact Area Service dashboard figures (scope summary)
+      parameters:
+        - $ref: '#/components/parameters/area_id'
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+        - $ref: '#/components/parameters/compare'
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /meeting-lookups:
+    get:
+      summary: Meeting search activity (scope summary)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /meditations:
+    get:
+      summary: JFT and SPAD, Area-attributed and installation-wide (scope summary)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /sms-summary:
+    get:
+      summary: SMS activity (scope summary)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /calls:
+    get:
+      summary: Paginated individual calls (scope call_details)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/include_unassigned'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+        - { name: category, in: query, schema: { type: string, enum: [volunteer, voicemail, meeting_lookup, meditation, dialback, menu_only] } }
+        - { name: outcome, in: query, schema: { type: string } }
+        - { name: answered, in: query, schema: { type: boolean } }
+        - { name: voicemail, in: query, schema: { type: boolean } }
+        - { name: volunteer_id, in: query, description: Requires volunteer_stats scope., schema: { type: string } }
+        - { name: min_duration, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: max_duration, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: sort, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      calls: { type: array, items: { $ref: '#/components/schemas/Call' } }
+                      pagination:
+                        type: object
+                        properties:
+                          page: { type: integer }
+                          per_page: { type: integer }
+                          total: { type: integer }
+                          total_pages: { type: integer }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /calls/{id}:
+    get:
+      summary: One call with its event timeline (scope call_details)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/timezone'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      call: { $ref: '#/components/schemas/CallDetail' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /volunteers:
+    get:
+      summary: Volunteer ids active in the period (scope volunteer_stats)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+
+  /volunteer-summary:
+    get:
+      summary: Per-volunteer statistics (scope volunteer_stats)
+      parameters:
+        - $ref: '#/components/parameters/areas'
+        - $ref: '#/components/parameters/period'
+        - $ref: '#/components/parameters/start_date'
+        - $ref: '#/components/parameters/end_date'
+        - $ref: '#/components/parameters/timezone'
+        - { name: sort, in: query, schema: { type: string, enum: [answered_calls, answer_rate, total_conversation_seconds, routed_attempts] } }
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }

@@ -1,0 +1,20 @@
+# YAP Reporting Webservice — nginx (YAP itself officially targets Apache; use this if you front it with nginx).
+# Place inside the server { } block that serves YAP over HTTPS.
+
+# Route every /yap/reporting-api/ request to the front controller.
+location ^~ /yap/reporting-api/ {
+    # Never serve anything from the package directly.
+    location ~ ^/yap/reporting-api/(config|data|src|bin|tests|docs|deploy|vendor)(/|$) { deny all; return 404; }
+    location ~ /\. { deny all; return 404; }
+
+    rewrite ^ /yap/reporting-api/public/index.php last;
+}
+
+location = /yap/reporting-api/public/index.php {
+    internal;                                   # reachable only via the rewrite above
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root/yap/reporting-api/public/index.php;
+    fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    fastcgi_param HTTPS on;
+    fastcgi_pass unix:/run/php/php8.3-fpm.sock; # adjust to your PHP-FPM socket
+}

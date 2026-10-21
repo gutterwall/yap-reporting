@@ -1,0 +1,16 @@
+# Only index.php in this directory is served.
+Options -Indexes -MultiViews
+<IfModule mod_authz_core.c>
+    Require all denied
+    <Files "index.php">
+        Require all granted
+    </Files>
+</IfModule>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+<IfModule mod_cgi.c>
+    CGIPassAuth On
+</IfModule>

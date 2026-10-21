@@ -1,0 +1,7 @@
+# Translation template for YAP Reporting for WordPress.
+# Regenerate with: wp i18n make-pot . languages/yap-reporting.pot
+msgid ""
+msgstr ""
+"Project-Id-Version: YAP Reporting for WordPress 1.0.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"X-Domain: yap-reporting\n"

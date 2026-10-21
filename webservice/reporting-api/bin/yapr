@@ -1,0 +1,278 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * YAP Reporting Webservice — administrative command line.
+ * Run from a shell on the YAP server as the web server user (or an admin with access to data/).
+ *
+ *   php bin/yapr init
+ *   php bin/yapr check
+ *   php bin/yapr discover
+ *   php bin/yapr client:create --name="Area website" --areas=12,15 [--scopes=summary,call_details,volunteer_stats,volunteer_names] [--allow-unassigned] [--ip=203.0.113.10]
+ *   php bin/yapr client:create --name="Region website" --all
+ *   php bin/yapr client:list
+ *   php bin/yapr client:update <id> [--areas=..] [--all|--no-all] [--scopes=..] [--ip=..|--ip=none] [--allow-unassigned|--no-allow-unassigned]
+ *   php bin/yapr client:rotate <id> [--grace-hours=24]
+ *   php bin/yapr client:revoke <id>
+ *   php bin/yapr cache:clear
+ */
+
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit(1);
+}
+
+$baseDir = dirname(__DIR__);
+if (is_file($baseDir . '/vendor/autoload.php')) {
+    require $baseDir . '/vendor/autoload.php';
+}
+require_once $baseDir . '/src/autoload.php';
+
+use YapReporting\App;
+use YapReporting\Auth\Client;
+use YapReporting\Auth\ClientStore;
+use YapReporting\Config;
+use YapReporting\Security\IpMatcher;
+use YapReporting\Support\FileCache;
+use YapReporting\Yap\EventCatalog;
+use YapReporting\Yap\YapConfigLoader;
+
+/** @return array{0: string[], 1: array<string, string|bool>} */
+function parseArgs(array $argv): array
+{
+    $positional = [];
+    $options = [];
+    foreach (array_slice($argv, 2) as $arg) {
+        if (str_starts_with($arg, '--')) {
+            $parts = explode('=', substr($arg, 2), 2);
+            $options[$parts[0]] = $parts[1] ?? true;
+        } else {
+            $positional[] = $arg;
+        }
+    }
+    return [$positional, $options];
+}
+
+function out(string $line = ''): void
+{
+    fwrite(STDOUT, $line . PHP_EOL);
+}
+
+function fail(string $message, int $code = 1): never
+{
+    fwrite(STDERR, 'Error: ' . $message . PHP_EOL);
+    exit($code);
+}
+
+/** @return int[] */
+function parseIds(string $csv): array
+{
+    if (preg_match('/^\d+(,\d+)*$/', $csv) !== 1) {
+        fail('--areas must be a comma-separated list of numeric BMLT service body ids.');
+    }
+    return array_values(array_unique(array_map('intval', explode(',', $csv))));
+}
+
+/** @return string[] */
+function parseScopes(string $csv): array
+{
+    $scopes = array_values(array_filter(array_map('trim', explode(',', $csv))));
+    foreach ($scopes as $s) {
+        if (!in_array($s, Client::ALL_SCOPES, true)) {
+            fail('Unknown scope "' . $s . '". Valid: ' . implode(', ', Client::ALL_SCOPES));
+        }
+    }
+    return $scopes;
+}
+
+/** @return string[] */
+function parseIps(string $csv): array
+{
+    if ($csv === 'none') {
+        return [];
+    }
+    $ips = array_values(array_filter(array_map('trim', explode(',', $csv))));
+    foreach ($ips as $ip) {
+        if (!IpMatcher::isValidRule($ip)) {
+            fail('Invalid IP or CIDR: ' . $ip);
+        }
+    }
+    return $ips;
+}
+
+$config = Config::load($baseDir);
+$store = new ClientStore($config->dataDir());
+$command = $argv[1] ?? 'help';
+[$args, $opts] = parseArgs($argv);
+
+switch ($command) {
+    case 'init':
+        $store->initialise();
+        out('Initialised data directory: ' . $config->dataDir());
+        out('  secret.key and clients.json created with 0600 permissions.');
+        if (str_starts_with(realpath($config->dataDir()) ?: '', realpath($config->yapRoot()) ?: "\0")) {
+            out('  NOTE: the data directory is inside the YAP web root. It is protected by .htaccess on Apache;');
+            out('        on nginx you MUST deny it (see deploy/nginx.conf.example) or set data_dir outside the web root.');
+        }
+        out('Next: php bin/yapr check');
+        break;
+
+    case 'check':
+        $ok = true;
+        out('YAP root:            ' . $config->yapRoot());
+        $loader = new YapConfigLoader($config);
+        try {
+            $creds = $loader->databaseCredentials();
+            out('Database settings:   found (' . $creds['source'] . ', database "' . $creds['database'] . '")');
+        } catch (\Throwable $e) {
+            out('Database settings:   NOT FOUND — ' . $e->getMessage());
+            $ok = false;
+        }
+        $file = EventCatalog::locate($config);
+        $catalog = EventCatalog::fromConfig($config);
+        out('Event definitions:   ' . ($file !== null ? $file . ' (' . count($catalog->all()) . ' events)' : 'NOT FOUND'));
+        if ($catalog->isEmpty()) {
+            $ok = false;
+        }
+        if ($ok) {
+            try {
+                $app = new App($config);
+                $app->db()->pdo();
+                out('Database connection: OK (session is READ ONLY)');
+                $schema = $app->schema();
+                foreach ($schema->describe() as $table => $info) {
+                    out(sprintf('  %-24s %s', $table, $info['present'] ? 'present: ' . implode(', ', $info['columns']) : 'missing'));
+                }
+                out('Metric availability:');
+                foreach ($app->capabilities()->matrix() as $metric => $state) {
+                    out(sprintf('  %-24s %s', $metric, $state['available'] ? 'yes' : 'NO — ' . $state['reason']));
+                }
+            } catch (\Throwable $e) {
+                out('Database connection: FAILED — ' . $e->getMessage());
+                $ok = false;
+            }
+        }
+        out('Client registry:     ' . ($store->isInitialised() ? count($store->all()) . ' client(s)' : 'not initialised (run init)'));
+        out('HTTPS required:      ' . ((bool) $config->get('require_https', true) ? 'yes' : 'NO — enable require_https for production'));
+        exit($ok ? 0 : 2);
+
+    case 'discover':
+        $catalog = EventCatalog::fromConfig($config);
+        out('Event catalog source: ' . $catalog->source);
+        foreach ($catalog->all() as $name => $id) {
+            out(sprintf('  %3d  %s', $id, $name));
+        }
+        try {
+            $app = new App($config, null, $catalog);
+            out('');
+            out('Schema (reporting-relevant columns only):');
+            foreach ($app->schema()->describe() as $table => $info) {
+                out(sprintf('  %-24s %s', $table, $info['present'] ? implode(', ', $info['columns']) : 'missing'));
+            }
+        } catch (\Throwable $e) {
+            out('Could not inspect schema: ' . $e->getMessage());
+        }
+        break;
+
+    case 'client:create':
+        if (!$store->isInitialised()) {
+            fail('Run "php bin/yapr init" first.');
+        }
+        $name = is_string($opts['name'] ?? null) ? trim((string) $opts['name']) : '';
+        if ($name === '' || strlen($name) > 100) {
+            fail('--name is required (max 100 characters).');
+        }
+        $all = isset($opts['all']);
+        $areas = is_string($opts['areas'] ?? null) ? parseIds((string) $opts['areas']) : [];
+        if (!$all && $areas === []) {
+            fail('Give --areas=<ids> or --all.');
+        }
+        $scopes = is_string($opts['scopes'] ?? null) ? parseScopes((string) $opts['scopes']) : [Client::SCOPE_SUMMARY];
+        $ips = is_string($opts['ip'] ?? null) ? parseIps((string) $opts['ip']) : [];
+        [$id, $token] = $store->create($name, $all, $areas, isset($opts['allow-unassigned']), $scopes, $ips);
+        out('Client created: ' . $id);
+        out('Scopes:         ' . implode(', ', $scopes));
+        out('Service bodies: ' . ($all ? 'ALL' : implode(', ', $areas)));
+        out('');
+        out('API token (shown ONCE — paste it into the WordPress plugin settings now):');
+        out('');
+        out('  ' . $token);
+        out('');
+        break;
+
+    case 'client:list':
+        foreach ($store->all() as $id => $r) {
+            out(sprintf(
+                '%s  %-30s %-8s sb=%s scopes=%s%s',
+                $id,
+                (string) $r['name'],
+                empty($r['revoked_at']) ? 'active' : 'REVOKED',
+                !empty($r['all_service_bodies']) ? 'ALL' : implode(',', (array) $r['service_body_ids']),
+                implode(',', (array) $r['scopes']),
+                !empty($r['ip_allowlist']) ? ' ip=' . implode(',', (array) $r['ip_allowlist']) : ''
+            ));
+        }
+        break;
+
+    case 'client:update':
+        $id = $args[0] ?? fail('Client id required.');
+        $changes = [];
+        if (is_string($opts['areas'] ?? null)) {
+            $changes['service_body_ids'] = parseIds((string) $opts['areas']);
+        }
+        if (isset($opts['all'])) {
+            $changes['all_service_bodies'] = true;
+        }
+        if (isset($opts['no-all'])) {
+            $changes['all_service_bodies'] = false;
+        }
+        if (is_string($opts['scopes'] ?? null)) {
+            $changes['scopes'] = parseScopes((string) $opts['scopes']);
+        }
+        if (is_string($opts['ip'] ?? null)) {
+            $changes['ip_allowlist'] = parseIps((string) $opts['ip']);
+        }
+        if (isset($opts['allow-unassigned'])) {
+            $changes['allow_unassigned'] = true;
+        }
+        if (isset($opts['no-allow-unassigned'])) {
+            $changes['allow_unassigned'] = false;
+        }
+        if (is_string($opts['name'] ?? null)) {
+            $changes['name'] = trim((string) $opts['name']);
+        }
+        $store->update($id, $changes);
+        (new FileCache($config->dataDir() . '/cache', 1))->clear();
+        out('Client ' . $id . ' updated. Report cache cleared.');
+        break;
+
+    case 'client:rotate':
+        $id = $args[0] ?? fail('Client id required.');
+        $grace = isset($opts['grace-hours']) && is_numeric($opts['grace-hours']) ? (int) $opts['grace-hours'] : 24;
+        $grace = max(0, min($grace, 168));
+        $token = $store->rotate($id, $grace * 3600);
+        out('New token for ' . $id . ' (shown ONCE):');
+        out('');
+        out('  ' . $token);
+        out('');
+        out($grace > 0 ? 'The previous token keeps working for ' . $grace . ' hour(s).' : 'The previous token stopped working immediately.');
+        break;
+
+    case 'client:revoke':
+        $id = $args[0] ?? fail('Client id required.');
+        $store->revoke($id);
+        out('Client ' . $id . ' revoked. All of its tokens stop working immediately.');
+        break;
+
+    case 'cache:clear':
+        $n = (new FileCache($config->dataDir() . '/cache', 1))->clear();
+        out('Removed ' . $n . ' cached report(s).');
+        break;
+
+    default:
+        out('YAP Reporting Webservice ' . App::VERSION);
+        out('Commands: init, check, discover, client:create, client:list, client:update, client:rotate, client:revoke, cache:clear');
+        out('See README.md for details.');
+}

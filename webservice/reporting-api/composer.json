@@ -1,0 +1,25 @@
+{
+    "name": "bmlt-community/yap-reporting-webservice",
+    "description": "Secure, read-only reporting API for YAP (Yet Another Phoneline).",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "ext-json": "*",
+        "ext-tokenizer": "*"
+    },
+    "require-dev": {
+        "ext-pdo_sqlite": "*"
+    },
+    "autoload": {
+        "psr-4": { "YapReporting\\": "src/" }
+    },
+    "scripts": {
+        "test": "php tests/run.php"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

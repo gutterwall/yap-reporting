@@ -1,0 +1,15 @@
+# YAP Reporting Webservice — Apache (optional hardening in the vhost, in addition to the shipped .htaccess files).
+# Requires: mod_rewrite, AllowOverride All (or at least FileInfo AuthConfig Options) for the YAP directory.
+
+<Directory "/var/www/html/yap/reporting-api">
+    AllowOverride All
+    Options -Indexes -MultiViews
+</Directory>
+
+# Belt and braces: deny the internal directories even if .htaccess is ignored.
+<DirectoryMatch "^/var/www/html/yap/reporting-api/(config|data|src|bin|tests|docs|deploy|vendor)">
+    Require all denied
+</DirectoryMatch>
+
+# If PHP runs as FastCGI/PHP-FPM, make sure the Authorization header reaches PHP:
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1

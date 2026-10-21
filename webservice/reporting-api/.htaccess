@@ -1,0 +1,43 @@
+# YAP Reporting Webservice — rewrite rules.
+# Every request under /reporting-api/ is routed to public/index.php.
+# Source, config, data, tests, docs and bin are never served directly.
+Options -Indexes -MultiViews
+
+<IfModule mod_cgi.c>
+    CGIPassAuth On
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Do not inherit YAP's own rewrite rules from the parent folder.
+    RewriteOptions IgnoreInherit
+
+    # Hosts that need an explicit base (some IONOS / shared hosts): uncomment ONE line and match
+    # the address you use. Leave both commented if the automatic detection below works.
+    #   YAP at the root of a subdomain (https://yap.example.org/):
+    # RewriteBase /reporting-api/
+    #   YAP in a folder (https://example.org/yap/):
+    # RewriteBase /yap/reporting-api/
+
+    # Pass the Authorization header to PHP (CGI / FastCGI hosting strips it otherwise).
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Already at the front controller: stop.
+    RewriteRule ^public/index\.php(/.*)?$ - [L]
+
+    # Work out this folder's URL path automatically (no RewriteBase needed):
+    # for /reporting-api/setup, $0 is "setup" and BASE becomes "/reporting-api".
+    RewriteCond %{REQUEST_URI}::$0 ^(/.+)/(.*)::\2$
+    RewriteRule .* - [E=YAPR_BASE:%1]
+
+    # Everything else goes to the front controller, using an absolute path.
+    RewriteRule ^ %{ENV:YAPR_BASE}/public/index.php [L]
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+    # Without mod_rewrite, use the address .../reporting-api/public/index.php/api/v1/... instead.
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</IfModule>

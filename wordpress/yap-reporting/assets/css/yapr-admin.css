@@ -1,0 +1,19 @@
+/* Admin-only layout. Scoped to .yapr-wrap. */
+.yapr-wrap .yapr-card { background: #fff; border: 1px solid #dcdcde; padding: 1rem 1.25rem; margin: 1rem 0; max-width: 72rem; }
+.yapr-wrap .yapr-card h2 { margin-top: 0; }
+.yapr-wrap .yapr-inline-form { display: inline-block; margin: .5rem .3rem .5rem 0; }
+.yapr-wrap .yapr-inline-check { display: inline-block; margin: 0 1rem .35rem 0; }
+.yapr-wrap .yapr-legend { font-weight: 600; margin: .75rem 0 .35rem; display: block; }
+.yapr-wrap .yapr-tree ul { margin: .2rem 0 .2rem 1.4rem; }
+.yapr-wrap .yapr-tree > ul { margin-left: 0; }
+.yapr-wrap .yapr-tree li { margin: .15rem 0; }
+.yapr-wrap .yapr-muted { color: #646970; }
+.yapr-wrap .yapr-warning { color: #b32d2e; font-weight: 600; }
+.yapr-wrap .yapr-grant-areas { margin-top: .35rem; }
+.yapr-wrap .yapr-grant-areas[hidden] { display: none; }
+.yapr-wrap .yapr-steps { max-width: 48rem; padding-left: 1.5rem; }
+.yapr-wrap .yapr-steps li { padding: .4rem 0; border-bottom: 1px solid #f0f0f1; }
+.yapr-wrap .yapr-step-state { display: inline-block; min-width: 3.5rem; font-size: .85em; color: #8a5a00; }
+.yapr-wrap .yapr-steps li.is-done .yapr-step-state { color: #1a7f37; }
+.yapr-wrap .yapr-app { background: #fff; padding: .5rem 1.25rem 1rem; border: 1px solid #dcdcde; }
+.yapr-wrap .yapr-actions { margin-top: .5rem; }
