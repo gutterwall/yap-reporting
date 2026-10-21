@@ -30,24 +30,54 @@ final class Export {
 		if ( ! is_user_logged_in() || ! check_admin_referer( 'yapr_export', '_yapr_nonce' ) ) {
 			wp_die( esc_html__( 'Your session has expired. Reload the report and try again.', 'yap-reporting' ), 403 );
 		}
-		$type = sanitize_key( wp_unslash( $_GET['type'] ?? '' ) ); // phpcs:ignore WordPress.Security.NonceVerification -- verified above.
+		$doc = self::document( wp_unslash( $_GET ) ); // phpcs:ignore WordPress.Security.NonceVerification -- verified above; every value is validated in document().
+
+		nocache_headers();
+		header( 'Cache-Control: private, no-store, max-age=0' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Referrer-Policy: no-referrer' );
+		header( 'Content-Type: ' . $doc['content_type'] );
+		if ( 'csv' === $doc['format'] ) {
+			header( 'Content-Disposition: attachment; filename="' . $doc['filename'] . '"' );
+		} else {
+			header( "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'" );
+		}
+		echo $doc['body']; // phpcs:ignore WordPress.Security.EscapeOutput -- CSV cells are neutralised and HTML is escaped in printable().
+		exit;
+	}
+
+	/**
+	 * Build an export for the current user: the same capability and Area checks as the dashboards.
+	 *
+	 * @param array<string, mixed> $query type, format, areas, period or start_date/end_date
+	 * @return array{format: string, content_type: string, filename: string, body: string}
+	 */
+	public static function document( array $query ): array {
+		// A list where one value is expected is malformed: refuse it ("invalid" fails validation) rather than drop it.
+		$query = array_map( static fn( $v ) => is_scalar( $v ) ? (string) $v : 'invalid', $query );
+		$type  = sanitize_key( (string) ( $query['type'] ?? '' ) );
 		if ( ! isset( self::TYPES[ $type ] ) || ! Settings::get( 'exports_enabled' ) || ! current_user_can( Access::CAP_EXPORT ) || ! current_user_can( self::TYPES[ $type ]['cap'] ) ) {
 			wp_die( esc_html__( 'You do not have permission to export this report.', 'yap-reporting' ), 403 );
 		}
-		$format = 'html' === ( $_GET['format'] ?? '' ) ? 'html' : 'csv'; // phpcs:ignore WordPress.Security.NonceVerification
+		$format = 'html' === ( $query['format'] ?? '' ) ? 'html' : 'csv';
 
-		$areas = Access::resolve( get_current_user_id(), Access::parse_ids( isset( $_GET['areas'] ) ? sanitize_text_field( wp_unslash( $_GET['areas'] ) ) : null ) ); // phpcs:ignore WordPress.Security.NonceVerification
+		$requested = Access::parse_ids( isset( $query['areas'] ) ? sanitize_text_field( (string) $query['areas'] ) : null );
+		$areas     = Access::resolve( get_current_user_id(), $requested );
 		if ( is_wp_error( $areas ) ) {
 			wp_die( esc_html( $areas->get_error_message() ), 403 );
 		}
 		$params = array( 'timezone' => Settings::timezone() );
-		$start  = isset( $_GET['start_date'] ) ? sanitize_text_field( wp_unslash( $_GET['start_date'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-		$end    = isset( $_GET['end_date'] ) ? sanitize_text_field( wp_unslash( $_GET['end_date'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		// "All my Areas" includes region-wide activity exactly as on the dashboard.
+		if ( null === $requested && Access::can_see_unassigned( get_current_user_id() ) ) {
+			$params['include_unassigned'] = 'true';
+		}
+		$start = sanitize_text_field( (string) ( $query['start_date'] ?? '' ) );
+		$end   = sanitize_text_field( (string) ( $query['end_date'] ?? '' ) );
 		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $start ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $end ) ) {
 			$params['start_date'] = $start;
 			$params['end_date']   = $end;
 		} else {
-			$p                = sanitize_key( wp_unslash( $_GET['period'] ?? '' ) ); // phpcs:ignore WordPress.Security.NonceVerification
+			$p                = sanitize_key( (string) ( $query['period'] ?? '' ) );
 			$params['period'] = in_array( $p, Settings::PERIODS, true ) ? $p : (string) Settings::get( 'default_period' );
 		}
 
@@ -55,40 +85,34 @@ final class Export {
 		$title = self::TYPES[ $type ]['title'];
 		$info  = array(
 			array( 'Report', $title ),
-			array( 'Areas', implode( '; ', array_values( Areas::names( $areas ) ) ) ),
+			array( 'Areas', implode( '; ', array_values( Areas::names( $areas ) ) ) . ( isset( $params['include_unassigned'] ) ? '; ' . __( 'Region-wide activity', 'yap-reporting' ) : '' ) ),
 			array( 'Period', isset( $meta['range'] ) ? ( $meta['range']['start_date'] ?? '' ) . ' to ' . ( $meta['range']['end_date'] ?? '' ) : '' ),
 			array( 'Timezone', Settings::timezone() ),
 			array( 'Data as of', $fetched ? wp_date( 'Y-m-d H:i T', $fetched ) : '' ),
 			array( 'Answered means', (string) ( $meta['answered_definition'] ?? '' ) ),
 		);
-
-		nocache_headers();
-		header( 'Cache-Control: private, no-store, max-age=0' );
-		header( 'X-Content-Type-Options: nosniff' );
-		header( 'Referrer-Policy: no-referrer' );
 		$filename = 'yap-' . $type . '-' . gmdate( 'Ymd-His' );
 
 		if ( 'csv' === $format ) {
-			header( 'Content-Type: text/csv; charset=utf-8' );
-			header( 'Content-Disposition: attachment; filename="' . $filename . '.csv"' );
-			$out = fopen( 'php://output', 'w' );
+			$out = fopen( 'php://temp', 'w+' );
 			fwrite( $out, "\xEF\xBB\xBF" );
 			foreach ( $info as $line ) {
-				fputcsv( $out, array_map( array( self::class, 'csv_cell' ), $line ) );
+				fputcsv( $out, array_map( array( self::class, 'csv_cell' ), $line ), ',', '"', '' );
 			}
-			fputcsv( $out, array() );
-			fputcsv( $out, array_map( array( self::class, 'csv_cell' ), $headers ) );
+			fputcsv( $out, array(), ',', '"', '' );
+			fputcsv( $out, array_map( array( self::class, 'csv_cell' ), $headers ), ',', '"', '' );
 			foreach ( $rows as $row ) {
-				fputcsv( $out, array_map( array( self::class, 'csv_cell' ), $row ) );
+				fputcsv( $out, array_map( array( self::class, 'csv_cell' ), $row ), ',', '"', '' );
 			}
+			rewind( $out );
+			$body = (string) stream_get_contents( $out );
 			fclose( $out );
-			exit;
+			return array( 'format' => 'csv', 'content_type' => 'text/csv; charset=utf-8', 'filename' => $filename . '.csv', 'body' => $body );
 		}
 
-		header( 'Content-Type: text/html; charset=utf-8' );
-		header( "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'" );
+		ob_start();
 		self::printable( $title, $info, $headers, $rows );
-		exit;
+		return array( 'format' => 'html', 'content_type' => 'text/html; charset=utf-8', 'filename' => $filename . '.html', 'body' => (string) ob_get_clean() );
 	}
 
 	/**

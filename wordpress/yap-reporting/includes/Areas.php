@@ -86,8 +86,9 @@ final class Areas {
 
 	/** A region expands to itself plus managed descendants. @return int[] */
 	public static function expand_region( int $id ): array {
-		$ids = array_merge( array( $id ), self::descendants( $id ) );
-		return array_values( array_intersect( $ids, self::managed_ids() ) );
+		$ids = array_values( array_intersect( array_merge( array( $id ), self::descendants( $id ) ), self::managed_ids() ) );
+		sort( $ids );
+		return $ids;
 	}
 
 	/** @param array<int, array{id: int, parent_id: int, name: string, type: string}> $bodies */

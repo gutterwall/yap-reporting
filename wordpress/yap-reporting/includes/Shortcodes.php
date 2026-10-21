@@ -22,19 +22,30 @@ final class Shortcodes {
 	}
 
 	public static function register_assets(): void {
-		wp_register_style( 'yapr', YAPR_URL . 'assets/css/yapr.css', array(), YAPR_VERSION );
-		wp_register_script( 'yapr-app', YAPR_URL . 'assets/js/yapr-app.js', array(), YAPR_VERSION, true );
+		if ( ! wp_style_is( 'yapr', 'registered' ) ) {
+			wp_register_style( 'yapr', YAPR_URL . 'assets/css/yapr.css', array(), YAPR_VERSION );
+		}
+		if ( ! wp_script_is( 'yapr-app', 'registered' ) ) {
+			wp_register_script( 'yapr-app', YAPR_URL . 'assets/js/yapr-app.js', array(), YAPR_VERSION, true );
+		}
+	}
+
+	/**
+	 * Block themes render page content before wp_enqueue_scripts runs, so a shortcode may need the assets before
+	 * they would normally be registered. Without this, the report never loaded on block themes.
+	 */
+	private static function enqueue_style(): void {
+		self::register_assets();
+		wp_enqueue_style( 'yapr' );
 	}
 
 	/** Shared bootstrap data for the JS app (no secrets; REST nonce only). */
 	public static function enqueue_app(): void {
-		wp_enqueue_style( 'yapr' );
+		self::enqueue_style();
 		wp_enqueue_script( 'yapr-app' );
-		static $localized = false;
-		if ( $localized ) {
-			return;
+		if ( wp_scripts()->get_data( 'yapr-app', 'data' ) ) {
+			return; // Several reports on one page share one copy.
 		}
-		$localized = true;
 		$user      = get_current_user_id();
 		$allowed   = Access::allowed_areas( $user );
 		wp_localize_script(
@@ -190,7 +201,7 @@ final class Shortcodes {
 			return $private ? self::notice( __( 'The phoneline report is temporarily unavailable.', 'yap-reporting' ) . ' ' . $result->get_error_message() ) : '';
 		}
 
-		wp_enqueue_style( 'yapr' );
+		self::enqueue_style();
 		return Renderer::area_dashboard(
 			$area,
 			$result,
@@ -247,7 +258,7 @@ final class Shortcodes {
 	}
 
 	private static function notice( string $message, bool $allow_link = false ): string {
-		wp_enqueue_style( 'yapr' );
+		self::enqueue_style();
 		$body = $allow_link ? wp_kses( $message, array( 'a' => array( 'href' => array() ) ) ) : esc_html( $message );
 		return '<div class="yapr yapr-notice" role="note"><p>' . $body . '</p></div>';
 	}

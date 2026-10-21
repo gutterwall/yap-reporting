@@ -53,7 +53,7 @@ final class Cache {
 				'endpoint'   => substr( $endpoint, 0, 40 ),
 				'areas_key'  => substr( implode( ',', $areas ), 0, 255 ),
 				'period'     => substr( $period, 0, 40 ),
-				'payload'    => wp_json_encode( $payload ),
+				'payload'    => wp_json_encode( $payload, JSON_PRESERVE_ZERO_FRACTION ),
 				'fetched_at' => gmdate( 'Y-m-d H:i:s' ),
 				'expires_at' => gmdate( 'Y-m-d H:i:s', time() + max( 60, $ttl ) ),
 			),

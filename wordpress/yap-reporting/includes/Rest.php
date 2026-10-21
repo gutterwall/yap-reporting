@@ -208,14 +208,21 @@ final class Rest {
 		if ( array() === $allowed ) {
 			return new WP_Error( 'yapr_no_areas', __( 'Your account has not been given access to any Area reports.', 'yap-reporting' ), array( 'status' => 403 ) );
 		}
-		$result = ApiClient::get( 'calls/' . $r->get_param( 'id' ), array( 'timezone' => Settings::timezone() ) );
+		// Calls YAP stored without a service body are listed under "All my Areas" for users who see every Area,
+		// so those users must be able to open them too.
+		$unassigned = Access::can_see_unassigned( get_current_user_id() );
+		$query      = array( 'timezone' => Settings::timezone() );
+		if ( $unassigned ) {
+			$query['include_unassigned'] = 'true';
+		}
+		$result = ApiClient::get( 'calls/' . $r->get_param( 'id' ), $query );
 		if ( is_wp_error( $result ) ) {
 			return self::error( $result );
 		}
 		$call = (array) ( $result['data']['call'] ?? array() );
 		$sb   = isset( $call['service_body_id'] ) ? (int) $call['service_body_id'] : 0;
 		// The site's credential may cover more Areas than this user: enforce the user's own grant.
-		if ( ! in_array( $sb, $allowed, true ) ) {
+		if ( ! in_array( $sb, $allowed, true ) && ! ( $sb <= 0 && $unassigned ) ) {
 			return new WP_Error( 'yapr_not_found', __( 'Call not found.', 'yap-reporting' ), array( 'status' => 404 ) );
 		}
 		return self::no_store( array( 'call' => self::filter_call( $call ), 'area' => Areas::name( $sb ) ) );
