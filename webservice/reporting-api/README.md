@@ -145,6 +145,10 @@ catalog and schema are still detected.
 php tests/run.php        # requires pdo_sqlite; uses only fictional data
 ```
 
+The source repository (https://github.com/gutterwall/yap-reporting) also tests this service against a fake YAP 4.5.2
+database on MySQL and MariaDB (`tests/service/`), behind Apache with only the shipped `.htaccess` files and behind
+nginx with `deploy/nginx.conf.example` (`bin/e2e.sh`).
+
 ## Troubleshooting
 
 ### "404 Not Found"

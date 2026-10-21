@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.0
+* Text messages are no longer counted as phone calls. YAP writes a `records` row (type 2, the SmsSid) for every
+  inbound text; each one was counted in `total_calls` and `ended_before_selection_calls` wherever unassigned
+  activity was included (region-wide reports, "All my Areas" in WordPress). Area-only figures were not affected.
+* Trend and hour/weekday answer rates use the same definition as the summary: calls whose outcome YAP did not
+  record are left out of the denominator. Before, the same month could show two different answer rates.
+* Verified against a fake YAP 4.5.2 database on MySQL 8 and MariaDB, under a UTC server and a server four hours
+  behind UTC, running as a database account that can read only the documented columns (see the repository's
+  `fake-yap/` and `tests/service/`).
+
 ## 1.6.0
 * Area dashboard also returns server-wide totals (`*_installation_wide`, labelled `scope: installation`) for
   meeting lookups, text meeting lookups and text volunteer requests. Production YAP stores meeting searches,

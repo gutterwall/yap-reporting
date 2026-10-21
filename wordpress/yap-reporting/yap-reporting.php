@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name:       YAP Reporting for WordPress
- * Plugin URI:        https://github.com/bmlt-enabled/yap
+ * Plugin URI:        https://github.com/gutterwall/yap-reporting
  * Description:       Private reporting dashboards and a compact Area Service dashboard for YAP phonelines, with BMLT service body integration. Reads data only through the secured YAP Reporting Webservice.
- * Version:           1.6.0
+ * Version:           1.7.0
  * Requires at least: 6.2
  * Requires PHP:      8.1
  * Author:            YAP Reporting contributors
@@ -14,10 +14,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'YAPR_VERSION', '1.6.0' );
+define( 'YAPR_VERSION', '1.7.0' );
 // Compatibility with the YAP Reporting Webservice (see COMPATIBILITY.md).
 define( 'YAPR_REQUIRED_API_VERSION', 'v1' );
-define( 'YAPR_MIN_SERVICE_VERSION', '1.6.0' );
+define( 'YAPR_MIN_SERVICE_VERSION', '1.7.0' );
 define( 'YAPR_DB_VERSION', '1' );
 define( 'YAPR_FILE', __FILE__ );
 define( 'YAPR_DIR', plugin_dir_path( __FILE__ ) );

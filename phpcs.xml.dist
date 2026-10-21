@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<ruleset name="YAP Reporting">
+	<description>Correctness and security rules for both packages: WordPress security, database and i18n rules for
+	the plugin; PHP 8.1+ compatibility everywhere. (Formatting is not enforced.)</description>
+
+	<file>wordpress/yap-reporting</file>
+	<file>webservice/reporting-api</file>
+	<file>fake-yap</file>
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="sp"/>
+
+	<config name="testVersion" value="8.1-"/>
+	<config name="minimum_wp_version" value="6.2"/>
+
+	<rule ref="Generic.PHP.Syntax"/>
+	<rule ref="PHPCompatibility"/>
+
+	<!-- The plugin runs inside WordPress: escaping, nonces, input handling, SQL, i18n. -->
+	<rule ref="WordPress.Security">
+		<exclude-pattern>webservice/*</exclude-pattern>
+		<exclude-pattern>fake-yap/*</exclude-pattern>
+		<exclude-pattern>wordpress/yap-reporting/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.DB.PreparedSQL">
+		<exclude-pattern>webservice/*</exclude-pattern>
+		<exclude-pattern>fake-yap/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.DB.PreparedSQLPlaceholders">
+		<exclude-pattern>webservice/*</exclude-pattern>
+		<exclude-pattern>fake-yap/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.WP.I18n">
+		<exclude-pattern>webservice/*</exclude-pattern>
+		<exclude-pattern>fake-yap/*</exclude-pattern>
+		<exclude-pattern>wordpress/yap-reporting/tests/*</exclude-pattern>
+		<properties>
+			<property name="text_domain" type="array"><element value="yap-reporting"/></property>
+		</properties>
+	</rule>
+	<rule ref="WordPress.PHP.DevelopmentFunctions">
+		<exclude-pattern>webservice/*</exclude-pattern>
+		<exclude-pattern>fake-yap/*</exclude-pattern>
+		<exclude-pattern>wordpress/yap-reporting/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.PHP.DiscouragedPHPFunctions">
+		<exclude-pattern>webservice/*</exclude-pattern>
+		<exclude-pattern>fake-yap/*</exclude-pattern>
+		<exclude-pattern>wordpress/yap-reporting/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.PHP.RestrictedPHPFunctions"/>
+	<rule ref="WordPress.WP.AlternativeFunctions">
+		<exclude-pattern>webservice/*</exclude-pattern>
+		<exclude-pattern>fake-yap/*</exclude-pattern>
+		<exclude-pattern>wordpress/yap-reporting/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.WP.CronInterval"/>
+	<rule ref="WordPress.WP.GlobalVariablesOverride">
+		<exclude-pattern>webservice/*</exclude-pattern>
+		<exclude-pattern>fake-yap/*</exclude-pattern>
+	</rule>
+	<rule ref="Squiz.PHP.Eval"/>
+	<rule ref="Generic.PHP.BacktickOperator"/>
+</ruleset>

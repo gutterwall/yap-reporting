@@ -94,6 +94,7 @@ final class Export {
 		$filename = 'yap-' . $type . '-' . gmdate( 'Ymd-His' );
 
 		if ( 'csv' === $format ) {
+			// phpcs:disable WordPress.WP.AlternativeFunctions -- an in-memory stream for fputcsv(), not a file.
 			$out = fopen( 'php://temp', 'w+' );
 			fwrite( $out, "\xEF\xBB\xBF" );
 			foreach ( $info as $line ) {
@@ -107,6 +108,7 @@ final class Export {
 			rewind( $out );
 			$body = (string) stream_get_contents( $out );
 			fclose( $out );
+			// phpcs:enable
 			return array( 'format' => 'csv', 'content_type' => 'text/csv; charset=utf-8', 'filename' => $filename . '.csv', 'body' => $body );
 		}
 

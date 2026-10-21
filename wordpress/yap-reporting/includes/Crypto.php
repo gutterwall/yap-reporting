@@ -36,14 +36,14 @@ final class Crypto {
 		}
 		$nonce  = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
 		$cipher = sodium_crypto_secretbox( $plain, $nonce, self::key() );
-		return self::PREFIX . base64_encode( $nonce . $cipher );
+		return self::PREFIX . base64_encode( $nonce . $cipher ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- storage encoding of ciphertext.
 	}
 
 	public static function decrypt( string $stored ): ?string {
 		if ( ! self::available() || 0 !== strpos( $stored, self::PREFIX ) ) {
 			return null;
 		}
-		$raw = base64_decode( substr( $stored, strlen( self::PREFIX ) ), true );
+		$raw = base64_decode( substr( $stored, strlen( self::PREFIX ) ), true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- storage encoding of ciphertext.
 		if ( false === $raw || strlen( $raw ) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES ) {
 			return null;
 		}

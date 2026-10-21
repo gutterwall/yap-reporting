@@ -1,0 +1,12 @@
+parameters:
+    level: 5
+    paths:
+        - webservice/reporting-api/src
+        - webservice/reporting-api/public
+        - fake-yap/src
+        - wordpress/yap-reporting/includes
+        - wordpress/yap-reporting/yap-reporting.php
+        - wordpress/yap-reporting/uninstall.php
+    bootstrapFiles:
+        - tests/phpstan-constants.php
+    treatPhpDocTypesAsCertain: false

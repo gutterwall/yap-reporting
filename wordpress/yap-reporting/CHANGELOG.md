@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.7.0 (recommends webservice 1.7.0)
+* Block themes (Twenty Twenty-Four, Twenty Twenty-Five and other full-site-editing themes): `[yap_reporting]` and
+  `[yap_phoneline_admin]` stayed at "Loading phoneline report…" because the page content is rendered before
+  WordPress registers scripts. The plugin now registers its script and styles when a shortcode needs them.
+* Calls without a service body (meeting searches and other region-wide activity) listed under "All my Areas" can
+  now be opened; before, their details answered "Call not found".
+* "All my Areas" CSV and printable exports include region-wide activity, matching the dashboard they come from.
+  Malformed export links are refused instead of silently falling back to all Areas.
+* Regions expand to their Areas in a fixed order.
+* WordPress 6.7+: no more "translation loading was triggered too early" notice after an upgrade; translations and
+  upgrades run on `init`.
+* Cached figures keep their number format (23.0 stayed 23.0, not 23).
+* Recommends webservice 1.7.0, which stops counting text messages as phone calls in region-wide totals.
+* Development: a public repository with a fake YAP backend and automated tests from the database to the browser
+  (see the repository README). Release zips are built from tagged commits and no longer include the plugin's
+  test files.
+
 ## 1.6.0 (needs webservice 1.6.0)
 * "All my Areas" includes meeting searches, Just for Today, SPAD and text messages, which YAP stores without a
   service body (new setting "Region-wide activity", on by default; needs the credential's "Include unassigned

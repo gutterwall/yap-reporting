@@ -59,6 +59,7 @@ final class Admin {
 	public static function page_dashboard(): void {
 		self::open( __( 'Phoneline dashboard', 'yap-reporting' ) );
 		if ( current_user_can( Access::CAP_MANAGE_SETTINGS ) && ! Settings::get( 'setup_complete' ) ) {
+			/* translators: %s: URL of the Setup page */
 			echo '<div class="notice notice-info"><p>' . wp_kses_post( sprintf( __( 'Finish connecting this site to YAP on the <a href="%s">Setup</a> page.', 'yap-reporting' ), esc_url( admin_url( 'admin.php?page=yapr-setup' ) ) ) ) . '</p></div>';
 		}
 		echo Shortcodes::reporting( array( 'view' => 'overview' ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in renderer.
@@ -184,7 +185,7 @@ final class Admin {
 			case 'interval_history':
 			case 'interval_bmlt':
 				$limits = array( 'interval_recent' => array( 5, 1440 ), 'interval_history' => array( 30, 10080 ), 'interval_bmlt' => array( 60, 10080 ) );
-				printf( '<input type="number" class="small-text" id="%s" name="%s" value="%d" min="%d" max="%d"> %s', esc_attr( $id ), esc_attr( $name ), (int) $s[ $key ], $limits[ $key ][0], $limits[ $key ][1], esc_html__( 'minutes', 'yap-reporting' ) );
+				printf( '<input type="number" class="small-text" id="%s" name="%s" value="%d" min="%d" max="%d"> %s', esc_attr( $id ), esc_attr( $name ), (int) $s[ $key ], (int) $limits[ $key ][0], (int) $limits[ $key ][1], esc_html__( 'minutes', 'yap-reporting' ) );
 				break;
 			case 'sync_periods':
 				foreach ( Settings::PERIODS as $p ) {
@@ -384,7 +385,10 @@ final class Admin {
 
 	public static function handle_bmlt_save(): void {
 		self::guard( 'yapr_bmlt_save', Access::CAP_MANAGE_SETTINGS );
-		$root = untrailingslashit( esc_url_raw( trim( wp_unslash( (string) ( $_POST['bmlt_root'] ?? '' ) ) ), array( 'https' ) ) );
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- verified by self::guard().
+		$root = isset( $_POST['bmlt_root'] ) ? untrailingslashit( esc_url_raw( trim( sanitize_text_field( wp_unslash( $_POST['bmlt_root'] ) ) ), array( 'https' ) ) ) : '';
+		$do   = isset( $_POST['do'] ) ? sanitize_key( wp_unslash( $_POST['do'] ) ) : '';
+		// phpcs:enable
 		if ( '' !== $root ) {
 			$valid = UrlGuard::validate( $root );
 			if ( is_wp_error( $valid ) ) {
@@ -392,8 +396,9 @@ final class Admin {
 			}
 		}
 		Settings::update( array( 'bmlt_root' => $root ) );
-		if ( 'refresh' === ( $_POST['do'] ?? '' ) ) {
+		if ( 'refresh' === $do ) {
 			$result = Sync::run( 'bmlt', true );
+			/* translators: %d: number of service bodies */
 			self::redirect( 'yapr-bmlt', $result['ok'] ? sprintf( __( 'Loaded %d service bodies.', 'yap-reporting' ), $result['items'] ) : $result['message'], $result['ok'] ? 'success' : 'error' );
 		}
 		self::redirect( 'yapr-bmlt', __( 'Saved.', 'yap-reporting' ) );
@@ -401,16 +406,18 @@ final class Admin {
 
 	public static function handle_bmlt_areas(): void {
 		self::guard( 'yapr_bmlt_areas', Access::CAP_MANAGE_SETTINGS );
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- verified by self::guard().
 		if ( ! empty( $_POST['labels_only'] ) ) {
 			$labels = array();
-			foreach ( (array) wp_unslash( $_POST['labels'] ?? array() ) as $id => $label ) {
-				$label = sanitize_text_field( (string) $label );
+			$posted = isset( $_POST['labels'] ) && is_array( $_POST['labels'] ) ? map_deep( wp_unslash( $_POST['labels'] ), 'sanitize_text_field' ) : array();
+			foreach ( $posted as $id => $label ) {
+				$label = is_string( $label ) ? $label : '';
 				if ( absint( $id ) > 0 && '' !== $label ) {
 					$labels[ absint( $id ) ] = substr( $label, 0, 120 );
 				}
 			}
 			Settings::update( array( 'area_labels' => $labels ) );
-			foreach ( array_map( 'absint', (array) ( $_POST['adopt'] ?? array() ) ) as $id ) {
+			foreach ( array_map( 'absint', isset( $_POST['adopt'] ) ? (array) wp_unslash( $_POST['adopt'] ) : array() ) as $id ) {
 				if ( $id > 0 && ! Areas::exists( $id ) ) {
 					global $wpdb;
 					$wpdb->insert( Installer::table( 'areas' ), array( 'id' => $id, 'parent_id' => 0, 'name' => $labels[ $id ] ?? '', 'type' => '', 'managed' => 1, 'present_in_bmlt' => 0, 'updated_at' => current_time( 'mysql', true ) ) );
@@ -419,9 +426,10 @@ final class Admin {
 			Areas::flush();
 			self::redirect( 'yapr-bmlt', __( 'Names saved.', 'yap-reporting' ) );
 		}
-		$ids = array_map( 'absint', (array) ( $_POST['managed'] ?? array() ) );
+		$ids = array_map( 'absint', isset( $_POST['managed'] ) ? (array) wp_unslash( $_POST['managed'] ) : array() );
 		Areas::set_managed( $ids );
 		Settings::update( array( 'include_children' => empty( $_POST['include_children'] ) ? 0 : 1 ) );
+		// phpcs:enable
 		Cache::clear();
 		/* translators: %d: number of Areas */
 		self::redirect( 'yapr-bmlt', sprintf( __( '%d service bodies selected. Cached figures were cleared and will refresh on the next sync.', 'yap-reporting' ), count( Areas::managed_ids() ) ) );
@@ -482,8 +490,10 @@ final class Admin {
 
 	public static function handle_public_save(): void {
 		self::guard( 'yapr_public_save', Access::CAP_MANAGE_SETTINGS );
-		$areas   = array_values( array_intersect( Areas::managed_ids(), array_map( 'absint', (array) ( $_POST['public_areas'] ?? array() ) ) ) );
-		$metrics = array_values( array_intersect( Renderer::METRIC_KEYS, array_map( 'sanitize_key', (array) wp_unslash( $_POST['public_metrics'] ?? array() ) ) ) );
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- verified by self::guard().
+		$areas   = array_values( array_intersect( Areas::managed_ids(), array_map( 'absint', isset( $_POST['public_areas'] ) ? (array) wp_unslash( $_POST['public_areas'] ) : array() ) ) );
+		$metrics = array_values( array_intersect( Renderer::METRIC_KEYS, array_map( 'sanitize_key', isset( $_POST['public_metrics'] ) ? (array) wp_unslash( $_POST['public_metrics'] ) : array() ) ) );
+		// phpcs:enable
 		Settings::update( array( 'public_areas' => $areas, 'public_metrics' => $metrics ) );
 		Cache::clear( 'public' ); // Previously published payloads may include metrics no longer permitted.
 		self::redirect( 'yapr-area-dashboards', __( 'Public settings saved.', 'yap-reporting' ) );
@@ -543,6 +553,7 @@ final class Admin {
 					</tr>
 				<?php endforeach; ?>
 				</tbody></table>
+				<?php /* translators: %s: URL of the Users screen */ ?>
 				<p><?php echo wp_kses_post( sprintf( __( 'To add someone, give them the Phoneline Administrator or Area Reporter role on the <a href="%s">Users</a> screen.', 'yap-reporting' ), esc_url( admin_url( 'users.php' ) ) ) ); ?></p>
 			</div>
 			<?php submit_button( __( 'Save access', 'yap-reporting' ) ); ?>
@@ -600,8 +611,9 @@ final class Admin {
 			return 'inherit' === $mode ? 'inherit' : array();
 		};
 
+		// phpcs:disable WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- verified by self::guard(); keys and values are sanitised below and in $parse.
 		$grants = array();
-		foreach ( (array) wp_unslash( $_POST['role'] ?? array() ) as $role => $row ) {
+		foreach ( isset( $_POST['role'] ) ? (array) wp_unslash( $_POST['role'] ) : array() as $role => $row ) {
 			$role = sanitize_key( (string) $role );
 			if ( get_role( $role ) && 'administrator' !== $role ) {
 				$g = $parse( $row );
@@ -610,7 +622,7 @@ final class Admin {
 		}
 		Settings::update( array( 'role_areas' => $grants ) );
 
-		foreach ( (array) wp_unslash( $_POST['user'] ?? array() ) as $user_id => $row ) {
+		foreach ( isset( $_POST['user'] ) ? (array) wp_unslash( $_POST['user'] ) : array() as $user_id => $row ) {
 			$user_id = absint( $user_id );
 			if ( ! $user_id || ! get_userdata( $user_id ) ) {
 				continue;
@@ -622,6 +634,7 @@ final class Admin {
 				update_user_meta( $user_id, Access::USER_META, $g );
 			}
 		}
+		// phpcs:enable
 		self::redirect( 'yapr-access', __( 'Access saved.', 'yap-reporting' ) );
 	}
 
@@ -689,7 +702,7 @@ final class Admin {
 
 	public static function handle_sync(): void {
 		self::guard( 'yapr_sync', Access::CAP_MANAGE_SETTINGS );
-		$job    = sanitize_key( wp_unslash( (string) ( $_POST['job'] ?? 'recent' ) ) );
+		$job    = isset( $_POST['job'] ) ? sanitize_key( wp_unslash( $_POST['job'] ) ) : 'recent'; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified by self::guard().
 		$result = Sync::run( in_array( $job, Sync::JOBS, true ) ? $job : 'recent', true );
 		self::redirect( 'yapr-cache', $result['message'], $result['ok'] ? 'success' : 'error' );
 	}
@@ -712,7 +725,7 @@ final class Admin {
 	public static function handle_test_connection(): void {
 		self::guard( 'yapr_test_connection', Access::CAP_MANAGE_SETTINGS );
 		$r    = ApiClient::test_connection();
-		$back = sanitize_key( wp_unslash( (string) ( $_POST['back'] ?? 'yapr-diagnostics' ) ) );
+		$back = isset( $_POST['back'] ) ? sanitize_key( wp_unslash( $_POST['back'] ) ) : 'yapr-diagnostics'; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified by self::guard().
 		self::redirect( 0 === strpos( $back, 'yapr' ) ? $back : 'yapr-diagnostics', $r['message'], $r['ok'] ? 'success' : 'error' );
 	}
 

@@ -116,7 +116,7 @@ final class Renderer {
 		$is_rate   = 'answer_rate' === $key;
 
 		$delta = '';
-		if ( $opts['compare'] && $available && null !== $value && isset( $previous[ $key ]['value'] ) && null !== $previous[ $key ]['value'] ) {
+		if ( $opts['compare'] && $available && null !== $value && isset( $previous[ $key ]['value'] ) ) {
 			$diff = (float) $value - (float) $previous[ $key ]['value'];
 			if ( abs( $diff ) > 0.0001 ) {
 				$sign  = $diff > 0 ? '+' : '−';

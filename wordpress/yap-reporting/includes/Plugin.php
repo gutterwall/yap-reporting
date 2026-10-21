@@ -11,7 +11,7 @@ final class Plugin {
 		// translations loaded earlier.
 		add_action( 'init', array( self::class, 'init' ), 1 );
 
-		add_filter( 'cron_schedules', array( Sync::class, 'cron_schedules' ) );
+		add_filter( 'cron_schedules', array( Sync::class, 'cron_schedules' ) ); // phpcs:ignore WordPress.WP.CronInterval -- see Sync::cron_schedules().
 		Sync::register();
 		Rest::register();
 		Shortcodes::register();

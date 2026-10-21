@@ -25,7 +25,7 @@ use YapReporting\Yap\YapConfigLoader;
 
 final class App
 {
-    public const VERSION = '1.6.0';
+    public const VERSION = '1.7.0';
     public const API_VERSION = 'v1';
 
     private ?Connection $db;

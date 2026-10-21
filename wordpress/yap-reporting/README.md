@@ -11,7 +11,7 @@ Requires WordPress 6.2+, PHP 8.1+ with the `sodium` extension (bundled with PHP 
 1. YAP administrator: install the webservice and run
    `php bin/yapr client:create --name="Example Area website" --areas=<ids> --scopes=summary,call_details,volunteer_stats,volunteer_names`.
    A public-only site needs `--scopes=summary`.
-2. WordPress: *Plugins → Add New → Upload* `yap-reporting-wordpress.zip`, then activate.
+2. WordPress: *Plugins → Add New → Upload* `yap-reporting-wordpress-<version>.zip`, then activate.
 3. *YAP Reporting → Setup* walks through the rest:
 
 | Step | Where |
@@ -58,8 +58,12 @@ Definitions come from the webservice (see its `docs/DATA-MAPPING.md`). The essen
 
 ## Testing
 
+The tests live in the source repository (https://github.com/gutterwall/yap-reporting), not in the plugin zip:
+
 ```sh
-php tests/run.php   # pure-PHP unit tests with WordPress stubs (no WordPress install needed)
+php wordpress/yap-reporting/tests/run.php                  # pure-PHP unit tests with WordPress stand-ins
+vendor/bin/phpunit -c tests/wordpress/phpunit.xml.dist     # on WordPress, through the real webservice and a fake YAP
+bin/e2e.sh /tmp/e2e                                        # release zips on Apache/nginx, WordPress, Chrome
 ```
 
 ## Troubleshooting

@@ -101,14 +101,14 @@ final class Capabilities
             'jft_sms' => $events('JFT_LOOKUP_SMS'),
             'spad_voice' => $events('SPAD_LOOKUP'),
             'spad_sms' => $events('SPAD_LOOKUP_SMS'),
-            'call_durations' => $this->schema->has('records', 'duration') || ($this->schema->has('records', 'start_time') && $this->schema->has('records', 'end_time'))
+            'call_durations' => ($this->schema->has('records', 'duration') || ($this->schema->has('records', 'start_time') && $this->schema->has('records', 'end_time')))
                 ? null : 'records table has no duration or start/end time columns (is the Twilio status callback configured?).',
-            'volunteer_attribution' => $this->schema->has('records_events', 'meta')
-                ? $events('VOLUNTEER_DIALED') : 'records_events.meta column not present.',
-            'area_attribution' => $this->schema->has('records_events', 'service_body_id') ? null : 'records_events.service_body_id column not present.',
-            'multi_leg_grouping' => ($this->schema->has('conference_participants', 'conferencesid') && $this->schema->has('conference_participants', 'callsid'))
-                || ($this->schema->has('cache_records_conference_participants', 'parent_callsid') && $this->schema->has('cache_records_conference_participants', 'callsid'))
-                ? null : 'Neither conference_participants nor cache_records_conference_participants is available; volunteer legs cannot be linked to calls.',
+            'volunteer_attribution' => ($this->schema->has('records_events', 'meta')
+                ? $events('VOLUNTEER_DIALED') : 'records_events.meta column not present.'),
+            'area_attribution' => ($this->schema->has('records_events', 'service_body_id') ? null : 'records_events.service_body_id column not present.'),
+            'multi_leg_grouping' => ((($this->schema->has('conference_participants', 'conferencesid') && $this->schema->has('conference_participants', 'callsid'))
+                || ($this->schema->has('cache_records_conference_participants', 'parent_callsid') && $this->schema->has('cache_records_conference_participants', 'callsid')))
+                ? null : 'Neither conference_participants nor cache_records_conference_participants is available; volunteer legs cannot be linked to calls.'),
             default => 'Unknown requirement.',
         };
     }

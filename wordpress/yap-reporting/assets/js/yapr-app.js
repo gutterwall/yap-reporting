@@ -78,8 +78,13 @@
 		});
 		return parts.length ? '?' + parts.join('&') : '';
 	}
+	// Sites without pretty permalinks have a REST base like /index.php?rest_route=/yapr/v1/: add to its query.
+	function withQuery(base, params) {
+		var q = qs(params || {});
+		return q ? base + (base.indexOf('?') === -1 ? q : '&' + q.slice(1)) : base;
+	}
 	function api(path, params) {
-		return fetch(BOOT.rest + path + qs(params || {}), {
+		return fetch(withQuery(BOOT.rest + path, params), {
 			credentials: 'same-origin',
 			headers: { 'X-WP-Nonce': BOOT.nonce, 'Accept': 'application/json' }
 		}).then(function (res) {
@@ -297,10 +302,10 @@
 		var self = this;
 		types.forEach(function (t) {
 			var p = Object.assign({ action: 'yapr_export', type: t[0], _yapr_nonce: BOOT.exportNonce }, self.baseParams());
-			append(self.exportSlot, h('a', { class: 'yapr-btn yapr-btn-quiet', href: BOOT.exportUrl + qs(p), text: t[1] }));
+			append(self.exportSlot, h('a', { class: 'yapr-btn yapr-btn-quiet', href: withQuery(BOOT.exportUrl, p), text: t[1] }));
 		});
 		var printable = Object.assign({ action: 'yapr_export', type: types[0][0], format: 'html', _yapr_nonce: BOOT.exportNonce }, self.baseParams());
-		append(self.exportSlot, h('a', { class: 'yapr-btn yapr-btn-quiet', href: BOOT.exportUrl + qs(printable), target: '_blank', rel: 'noopener', text: T.print }));
+		append(self.exportSlot, h('a', { class: 'yapr-btn yapr-btn-quiet', href: withQuery(BOOT.exportUrl, printable), target: '_blank', rel: 'noopener', text: T.print }));
 	};
 
 	App.prototype.reload = function () {

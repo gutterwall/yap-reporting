@@ -22,6 +22,7 @@ final class BmltClient {
 			return new \WP_Error( 'yapr_bmlt_http', __( 'Could not reach the BMLT server: ', 'yap-reporting' ) . ApiClient::safe_message( $response->get_error_message() ) );
 		}
 		if ( 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+			/* translators: %d: HTTP status code */
 			return new \WP_Error( 'yapr_bmlt_status', sprintf( __( 'The BMLT server returned HTTP %d. Check the root server URL (it usually ends in /main_server).', 'yap-reporting' ), (int) wp_remote_retrieve_response_code( $response ) ) );
 		}
 		$data = json_decode( (string) wp_remote_retrieve_body( $response ), true );

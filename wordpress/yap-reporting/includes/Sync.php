@@ -26,9 +26,15 @@ final class Sync {
 				self::run( $job, false );
 			} );
 		}
-		add_action( 'yapr_cache_prune', array( Cache::class, 'prune' ) );
+		add_action(
+			'yapr_cache_prune',
+			static function (): void {
+				Cache::prune();
+			}
+		);
 	}
 
+	// phpcs:disable WordPress.WP.CronInterval -- intervals come from settings, never shorter than 5 minutes (interval_minutes()).
 	public static function cron_schedules( array $schedules ): array {
 		foreach ( self::JOBS as $job ) {
 			$minutes = self::interval_minutes( $job );
@@ -40,6 +46,8 @@ final class Sync {
 		}
 		return $schedules;
 	}
+
+	// phpcs:enable
 
 	public static function interval_minutes( string $job ): int {
 		switch ( $job ) {
@@ -53,7 +61,7 @@ final class Sync {
 	}
 
 	public static function schedule(): void {
-		add_filter( 'cron_schedules', array( self::class, 'cron_schedules' ) );
+		add_filter( 'cron_schedules', array( self::class, 'cron_schedules' ) ); // phpcs:ignore WordPress.WP.CronInterval -- see cron_schedules().
 		foreach ( self::JOBS as $i => $job ) {
 			if ( ! wp_next_scheduled( 'yapr_sync_' . $job ) ) {
 				wp_schedule_event( time() + 60 * ( $i + 1 ), 'yapr_' . $job, 'yapr_sync_' . $job );

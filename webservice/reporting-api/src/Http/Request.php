@@ -55,9 +55,7 @@ final class Request
             $secure = strtolower((string) ($server['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
         }
 
-        $query = is_array($_GET) ? $_GET : [];
-
-        return new self($method, $path, $query, $server, $secure, $ip, bin2hex(random_bytes(8)));
+        return new self($method, $path, $_GET, $server, $secure, $ip, bin2hex(random_bytes(8)));
     }
 
     /** Reduce any request URI to the part beginning at /api/ so the service works under any base path. */
@@ -86,12 +84,9 @@ final class Request
             }
         }
         if (function_exists('apache_request_headers')) {
-            $headers = apache_request_headers();
-            if (is_array($headers)) {
-                foreach ($headers as $name => $value) {
-                    if (strcasecmp((string) $name, 'Authorization') === 0) {
-                        return (string) $value;
-                    }
+            foreach (apache_request_headers() as $name => $value) {
+                if (strcasecmp((string) $name, 'Authorization') === 0) {
+                    return (string) $value;
                 }
             }
         }

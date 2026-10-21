@@ -72,6 +72,7 @@ final class ApiClient {
 		}
 		if ( 200 !== $status || ! is_array( $body ) ) {
 			$code = is_array( $body ) && isset( $body['error']['code'] ) ? sanitize_key( (string) $body['error']['code'] ) : 'http_' . $status;
+			/* translators: %d: HTTP status code */
 			$msg  = is_array( $body ) && isset( $body['error']['message'] ) ? self::safe_message( (string) $body['error']['message'] ) : sprintf( __( 'The Reporting API returned HTTP %d.', 'yap-reporting' ), $status );
 			return new \WP_Error( 'yapr_api_' . $code, $msg, array( 'status' => $status, 'elapsed_ms' => (int) ( ( microtime( true ) - $started ) * 1000 ) ) );
 		}
@@ -125,7 +126,7 @@ final class ApiClient {
 		}
 		if ( version_compare( $service, YAPR_MIN_SERVICE_VERSION, '<' ) ) {
 			/* translators: 1: installed webservice version, 2: minimum recommended version */
-			return array( 'status' => 'outdated', 'message' => sprintf( __( 'The webservice is version %1$s; version %2$s or newer is recommended. Version 1.4.0 fixes which volunteer is credited with answering and corrects call times on servers not set to UTC.', 'yap-reporting' ), $service, YAPR_MIN_SERVICE_VERSION ) );
+			return array( 'status' => 'outdated', 'message' => sprintf( __( 'The webservice is version %1$s; version %2$s or newer is recommended. Version 1.7.0 stops counting text messages as phone calls in region-wide totals; see CHANGELOG.md.', 'yap-reporting' ), $service, YAPR_MIN_SERVICE_VERSION ) );
 		}
 		/* translators: %s: webservice version */
 		return array( 'status' => 'ok', 'message' => sprintf( __( 'Webservice %s is compatible.', 'yap-reporting' ), $service ) );

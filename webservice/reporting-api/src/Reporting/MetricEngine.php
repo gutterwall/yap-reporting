@@ -653,7 +653,7 @@ final class MetricEngine
     }
 
     /**
-     * @param array<string, mixed>|null $installation full-installation engine for labelled totals
+     * @param MetricEngine|null $installation full-installation engine for labelled totals
      * @return array<string, mixed>
      */
     public function meditations(?MetricEngine $installation): array

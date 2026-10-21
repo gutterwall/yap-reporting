@@ -588,6 +588,7 @@ final class Scenario
                 'sms_jft' => 'JFT_LOOKUP_SMS',
                 'sms_spad' => 'SPAD_LOOKUP_SMS',
                 'sms_blackholed' => 'SMS_BLACKHOLED',
+                default => throw new \LogicException($flow),
             };
             // Verified in production: every text-message event is stored without a service body.
             $rows[] = ['event', $sid, $event, $t, null, null, 2];

@@ -2,6 +2,7 @@
 
 | WordPress plugin | Needs webservice API | Recommended webservice | Notes |
 |---|---|---|---|
+| 1.7.0 | v1 | 1.7.0 or newer | Works with 1.6.0, but region-wide totals then count text messages as calls. |
 | 1.6.0 | v1 | 1.6.0 or newer | Region-wide meeting / JFT / SPAD / text figures. |
 | 1.5.1 | v1 | 1.5.0 or newer (1.5.1 for the warning) | Warning for callers never connected. |
 | 1.5.0 | v1 | 1.5.0 or newer | Shows calls whose result YAP did not log. |
@@ -21,4 +22,4 @@ The plugin refuses only a webservice that reports a different API version (for e
 Release files are named `yap-reporting-wordpress-<version>.zip`. The folder inside is always `yap-reporting`,
 so WordPress treats a new zip as an upgrade of the same plugin (Plugins → Add New → Upload → Replace current).
 
-Requirements: WordPress 6.2+, PHP 8.1+ with the sodium extension.
+Requirements: WordPress 6.2+ (tested with 6.2 and 7.1), PHP 8.1+ with the sodium extension.

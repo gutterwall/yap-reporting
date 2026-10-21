@@ -117,7 +117,7 @@ final class Areas {
 		// Keep vanished service bodies (historical data may reference them) but flag them.
 		if ( $seen ) {
 			$placeholders = implode( ',', array_fill( 0, count( $seen ), '%d' ) );
-			$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET present_in_bmlt = 0 WHERE id NOT IN ({$placeholders})", $seen ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+			$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET present_in_bmlt = 0 WHERE id NOT IN ({$placeholders})", $seen ) ); // phpcs:ignore WordPress.DB.PreparedSQL, WordPress.DB.PreparedSQLPlaceholders -- one %d per id.
 		}
 		self::flush();
 		update_option( 'yapr_bmlt_synced_at', time(), false );
@@ -131,7 +131,7 @@ final class Areas {
 		$wpdb->query( "UPDATE {$table} SET managed = 0" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( $ids ) {
 			$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
-			$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET managed = 1 WHERE id IN ({$placeholders})", $ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+			$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET managed = 1 WHERE id IN ({$placeholders})", $ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL, WordPress.DB.PreparedSQLPlaceholders -- one %d per id.
 		}
 		self::flush();
 	}

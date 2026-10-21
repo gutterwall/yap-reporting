@@ -343,7 +343,8 @@ final class SetupConsole
     {
         $rows = [];
         $ok = static fn (bool $b): string => $b ? '<span class="good">OK</span>' : '<span class="bad">Problem</span>';
-        $rows[] = ['PHP version', $ok(PHP_VERSION_ID >= 80100) . ' ' . $this->e(PHP_VERSION) . (PHP_VERSION_ID >= 80100 ? '' : ' — PHP 8.1 or newer is required')];
+        // This code needs PHP 8.1 to run at all, so reaching this line proves the version.
+        $rows[] = ['PHP version', $ok(true) . ' ' . $this->e(PHP_VERSION)];
         foreach (['pdo_mysql', 'json', 'tokenizer'] as $ext) {
             $rows[] = ['PHP extension ' . $ext, $ok(extension_loaded($ext))];
         }

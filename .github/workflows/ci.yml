@@ -1,0 +1,249 @@
+# Tests for YAP Reporting: the WordPress plugin, the webservice, and both together against the fake YAP backend.
+#
+# Every push and pull request:
+#   lint       coding standards (WordPress security rules, PHP 8.1+ compatibility), PHPStan, dependency audit,
+#              secret scan, and the release build (versions agree, zips and checksums)
+#   unit       both packages' own tests on PHP 8.1-8.4
+#   service    the webservice against the fake YAP database on MySQL 8.0/8.4 and MariaDB 10.6/11.4, under a UTC
+#              server and one four hours behind, as a database account limited to the documented columns
+#   wordpress  the plugin on the WordPress test suite (oldest supported and latest WordPress, single site and
+#              multisite), talking to the real webservice code over the fake backend
+#   e2e        the release zips on Apache and nginx over HTTPS, a WordPress site on the default block theme, and
+#              headless Chrome as each kind of user
+# Tags: the zips built here get a provenance attestation, and those are the zips that are published.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  schedule:
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  WP_CLI_VERSION: 2.12.0
+
+jobs:
+  lint:
+    name: Standards, static analysis, audit, secrets and build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer
+          coverage: none
+      - run: composer install --no-progress --no-interaction
+      - name: Coding standards
+        run: vendor/bin/phpcs -q
+      - name: Static analysis (PHPStan level 5)
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+      - name: Known vulnerabilities in dependencies
+        # Retried only when packagist cannot be reached (exit 100); findings fail at once.
+        run: |
+          for i in 1 2 3; do
+            rc=0; composer audit || rc=$?
+            [ $rc -ne 100 ] && exit $rc
+            echo "packagist unreachable; retrying in 20 s"; sleep 20
+          done
+          exit 100
+      - name: Secret scan (whole history)
+        run: |
+          V=8.21.2
+          curl -fsSL --retry 5 -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_linux_x64.tar.gz"
+          curl -fsSL --retry 5 -o /tmp/gitleaks.sums "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_checksums.txt"
+          (cd /tmp && grep "gitleaks_${V}_linux_x64.tar.gz" gitleaks.sums | sed 's#gitleaks_.*#gitleaks.tgz#' | sha256sum -c -)
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          /tmp/gitleaks git --no-banner --redact .
+      - name: Release build
+        # Tags build the release; other pushes build test zips of the same version, marked as development builds.
+        run: bin/build.sh $([ "$GITHUB_REF_TYPE" = tag ] || echo --dev)
+      - uses: actions/upload-artifact@v5
+        with:
+          name: yap-reporting-zips
+          path: dist/yap-reporting-*.zip*
+          retention-days: 30
+
+  unit:
+    name: Unit tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_sqlite, sodium, tokenizer
+          coverage: none
+      - name: Webservice
+        run: php webservice/reporting-api/tests/run.php
+      - name: Plugin (WordPress stand-ins)
+        run: php wordpress/yap-reporting/tests/run.php
+
+  service:
+    name: Webservice on ${{ matrix.db }} (PHP ${{ matrix.php }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { php: '8.1', db: 'mysql:8.0' }
+          - { php: '8.4', db: 'mysql:8.4' }
+          - { php: '8.3', db: 'mariadb:10.6' }
+          - { php: '8.3', db: 'mariadb:11.4' }
+    services:
+      db:
+        image: ${{ matrix.db }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -proot || mariadb-admin ping -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, sodium, tokenizer
+          coverage: none
+      - name: Webservice against the fake YAP database (UTC server, then four hours behind)
+        run: php tests/service/run.php
+        env:
+          YAPR_TEST_DB_HOST: 127.0.0.1
+          YAPR_TEST_DB_PORT: 3306
+          YAPR_TEST_DB_ADMIN_USER: root
+          YAPR_TEST_DB_ADMIN_PASS: root
+          YAPR_TEST_ZONES: '+00:00,-04:00'
+
+  wordpress:
+    name: Plugin on WordPress ${{ matrix.wp }} (PHP ${{ matrix.php }}${{ matrix.multisite == '1' && ', multisite' || '' }}, ${{ matrix.db }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { php: '8.1', wp: '6.2.6', multisite: '0', db: 'mysql:8.0' }
+          - { php: '8.3', wp: 'latest', multisite: '0', db: 'mysql:8.0' }
+          - { php: '8.3', wp: 'latest', multisite: '1', db: 'mysql:8.0' }
+          - { php: '8.4', wp: 'latest', multisite: '0', db: 'mariadb:11.4' }
+    services:
+      db:
+        image: ${{ matrix.db }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -proot || mariadb-admin ping -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer
+          extensions: mysqli, pdo_mysql, sodium, tokenizer
+          coverage: none
+      - run: composer install --no-progress --no-interaction
+      - name: WordPress and its test library
+        run: bin/install-wp-tests.sh wordpress_test root root 127.0.0.1:3306 ${{ matrix.wp }} /tmp/wp-tests
+      - name: Plugin integration tests
+        run: vendor/bin/phpunit -c tests/wordpress/phpunit.xml.dist
+        env:
+          WP_TESTS_DIR: /tmp/wp-tests/tests-lib
+          WP_MULTISITE: ${{ matrix.multisite }}
+          YAPR_TEST_DB_ADMIN_USER: root
+          YAPR_TEST_DB_ADMIN_PASS: root
+
+  e2e:
+    name: End to end (Apache and nginx over HTTPS, WordPress, Chrome)
+    needs: lint
+    runs-on: ubuntu-24.04
+    services:
+      db:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mysqli, pdo_mysql, sodium, tokenizer
+          coverage: none
+      - name: Apache, nginx and PHP-FPM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apache2 nginx php8.3-fpm >/dev/null
+          sudo systemctl stop apache2 nginx php8.3-fpm || true
+          /usr/sbin/php-fpm8.3 -m | grep -qi pdo_mysql
+      - name: Install WP-CLI
+        run: |
+          URL=https://github.com/wp-cli/wp-cli/releases/download/v$WP_CLI_VERSION/wp-cli-$WP_CLI_VERSION.phar
+          curl -fsSL --retry 5 --retry-delay 5 -o /tmp/wp.phar "$URL"
+          curl -fsSL --retry 5 --retry-delay 5 -o /tmp/wp.sha512 "$URL.sha512"
+          echo "$(cat /tmp/wp.sha512)  /tmp/wp.phar" | sha512sum -c -
+          sudo install -m 755 /tmp/wp.phar /usr/local/bin/wp
+      - uses: actions/download-artifact@v5
+        with:
+          name: yap-reporting-zips
+          path: dist
+      - name: End-to-end test of the release zips
+        run: bin/e2e.sh /tmp/e2e
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_ADMIN_USER: root
+          DB_ADMIN_PASS: root
+          APACHE: /usr/sbin/apache2
+          APACHE_MODULES: /usr/lib/apache2/modules
+          NGINX: /usr/sbin/nginx
+          PHP_FPM: /usr/sbin/php-fpm8.3
+          CHROME: google-chrome
+          KEEP: '1'
+      - name: Server logs
+        if: failure()
+        run: |
+          for f in /tmp/e2e/logs/*; do echo "== $f"; tail -40 "$f"; done
+        continue-on-error: true
+
+  provenance:
+    name: Release zip provenance (tags)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, unit, service, wordpress, e2e]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: yap-reporting-zips
+          path: dist
+      - name: Checksums
+        run: cd dist && sha256sum -c *.sha256
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/yap-reporting-*.zip
