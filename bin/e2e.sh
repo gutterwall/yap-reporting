@@ -94,10 +94,20 @@ cat > "$W/run/fpm.conf" <<EOF
 error_log = $W/logs/fpm.log
 pid = $W/run/fpm.pid
 daemonize = no
-[www]
-listen = $W/run/fpm.sock
+; The YAP server and the WordPress site are separate machines in real life: separate pools, so a WordPress request
+; waiting for the webservice never waits for a worker of its own pool.
+[yap]
+listen = $W/run/fpm-yap.sock
 pm = static
-pm.max_children = 8
+pm.max_children = 6
+clear_env = no
+catch_workers_output = yes
+php_admin_value[error_log] = $W/logs/php.log
+php_admin_flag[log_errors] = on
+[wp]
+listen = $W/run/fpm-wp.sock
+pm = static
+pm.max_children = 6
 clear_env = no
 catch_workers_output = yes
 php_admin_value[error_log] = $W/logs/php.log
@@ -129,9 +139,6 @@ SSLSessionCache shmcb:$W/run/ssl_scache(512000)
 	AllowOverride None
 	Require all denied
 </Directory>
-<FilesMatch "\.php$">
-	SetHandler "proxy:unix:$W/run/fpm.sock|fcgi://localhost"
-</FilesMatch>
 # The webservice as on shared hosting: only the shipped .htaccess files protect it (no vhost rules).
 Listen 127.0.0.1:$HTTPS_APACHE
 Listen 127.0.0.1:$HTTP_APACHE
@@ -139,6 +146,9 @@ Listen 127.0.0.1:$WP_PORT
 <Directory $W/www>
 	AllowOverride All
 	Require all granted
+	<FilesMatch "\.php$">
+		SetHandler "proxy:unix:$W/run/fpm-yap.sock|fcgi://yap"
+	</FilesMatch>
 </Directory>
 <VirtualHost 127.0.0.1:$HTTPS_APACHE>
 	DocumentRoot $W/www
@@ -154,6 +164,9 @@ Listen 127.0.0.1:$WP_PORT
 <Directory $W/wp>
 	AllowOverride All
 	Require all granted
+	<FilesMatch "\.php$">
+		SetHandler "proxy:unix:$W/run/fpm-wp.sock|fcgi://wp"
+	</FilesMatch>
 </Directory>
 <VirtualHost 127.0.0.1:$WP_PORT>
 	DocumentRoot $W/wp
@@ -198,16 +211,16 @@ http {
 		root $W/www;
 		# deploy/nginx.conf.example from the release zip, unchanged except for the PHP-FPM socket:
 EOF
-	sed "s#fastcgi_pass unix:/run/php/php8.3-fpm.sock;#fastcgi_pass unix:$W/run/fpm.sock;#" "$SVC/deploy/nginx.conf.example" | sed 's/^/\t\t/'
+	sed "s#fastcgi_pass unix:/run/php/php8.3-fpm.sock;#fastcgi_pass unix:$W/run/fpm-yap.sock;#" "$SVC/deploy/nginx.conf.example" | sed 's/^/\t\t/'
 	echo "	}"
 	echo "}"
 } > "$W/nginx/nginx.conf"
-grep -q "fastcgi_pass unix:$W/run/fpm.sock" "$W/nginx/nginx.conf" || fail "deploy/nginx.conf.example no longer has the expected fastcgi_pass line"
+grep -q "fastcgi_pass unix:$W/run/fpm-yap.sock" "$W/nginx/nginx.conf" || fail "deploy/nginx.conf.example no longer has the expected fastcgi_pass line"
 "$NGINX" -e "$W/logs/nginx-early.log" -p "$W/nginx" -c "$W/nginx/nginx.conf" -t >/dev/null 2>"$W/logs/nginx-configtest.log" || { cat "$W/logs/nginx-configtest.log"; fail "nginx configuration"; }
 "$NGINX" -e "$W/logs/nginx-early.log" -p "$W/nginx" -c "$W/nginx/nginx.conf" >"$W/logs/nginx.out" 2>&1 &
 PIDS+=($!)
 for i in $(seq 1 50); do
-	curl -s -o /dev/null --cacert "$W/tls/ca.pem" "https://127.0.0.1:$HTTPS_APACHE/" && curl -s -o /dev/null --cacert "$W/tls/ca.pem" "https://127.0.0.1:$HTTPS_NGINX/" && [ -S "$W/run/fpm.sock" ] && break
+	curl -s -o /dev/null --cacert "$W/tls/ca.pem" "https://127.0.0.1:$HTTPS_APACHE/" && curl -s -o /dev/null --cacert "$W/tls/ca.pem" "https://127.0.0.1:$HTTPS_NGINX/" && [ -S "$W/run/fpm-yap.sock" ] && [ -S "$W/run/fpm-wp.sock" ] && break
 	sleep 0.2
 done
 pass "Apache $("$APACHE" -v | sed -n 's/Server version: Apache\/\([0-9.]*\).*/\1/p'), nginx $("$NGINX" -v 2>&1 | sed 's/.*nginx\///'), PHP-FPM $(php -r 'echo PHP_VERSION;')"

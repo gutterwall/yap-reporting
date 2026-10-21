@@ -197,11 +197,12 @@ try:
         fail(f'only {charts} charts drawn')
     ok(f'{charts} charts drawn')
 
-    # Choose one Area in the app's own Area selector.
+    # Choose one Area in the app's own Area selector; wait until the figures shown are replaced by the new ones.
+    b.js('window.__yaprOld = document.querySelector(".yapr-kpi-total_calls"); true')
     b.js('(() => { const s = [...document.querySelectorAll(".yapr-app select")].find(s => [...s.options].some(o => o.value === "1001")); s.value = "1001"; s.dispatchEvent(new Event("change")); return true; })()')
-    b.wait('document.querySelector(".yapr-chart-note") !== null && ' + REPORT_READY)
-    time.sleep(0.5)
-    b.wait(REPORT_READY)
+    b.wait('!document.body.contains(window.__yaprOld) && ' + REPORT_READY)
+    if b.js('!!document.querySelector(".yapr-app .yapr-error, .yapr-app [role=alert].yapr-error")'):
+        fail('the report for one Area failed: ' + b.js('document.querySelector(".yapr-app").innerText.slice(0, 300)'))
     compare(kpis(b), AREA, ['total_calls', 'volunteer_routed_calls', 'answered_calls', 'answer_rate'], 'Riverside Area')
     ok('Area selector: Riverside Area matches the scenario')
 
