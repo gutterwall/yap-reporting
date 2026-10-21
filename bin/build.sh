@@ -67,6 +67,10 @@ package() { # <source dir> <folder name in zip> <zip name> <exclude...>
 	printf '{\n\t"name": "%s",\n\t"version": "%s",\n\t"commit": "%s",\n\t"built": "%s",\n\t"files": %d%s\n}\n' \
 		"$name" "$V" "$COMMIT" "$(date -u -d "@$STAMP" +%Y-%m-%dT%H:%M:%SZ)" "$((files + 2))" "$([ "$DEV" = 1 ] && printf ',\n\t"development": true')" > "$stage/build.json"
 	(cd "$stage" && find . -type f ! -name checksums.sha256 | LC_ALL=C sort | sed 's#^\./##' | xargs -d '\n' sha256sum > checksums.sha256)
+	# Same permissions on every machine whatever its umask, so builds are identical everywhere.
+	find "$stage" -type d -exec chmod 755 {} +
+	find "$stage" -type f -exec chmod 644 {} +
+	[ -f "$stage/bin/yapr" ] && chmod 755 "$stage/bin/yapr"
 	find "$stage" -exec touch -h -d "@$STAMP" {} +
 	rm -f "$DIST/$zip"
 	(cd "$WORK" && find "$name" -print | LC_ALL=C sort | TZ=UTC zip -q -X "$DIST/$zip" -@)

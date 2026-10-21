@@ -4,6 +4,10 @@
 * Block themes (Twenty Twenty-Four, Twenty Twenty-Five and other full-site-editing themes): `[yap_reporting]` and
   `[yap_phoneline_admin]` stayed at "Loading phoneline report…" because the page content is rendered before
   WordPress registers scripts. The plugin now registers its script and styles when a shortcode needs them.
+* Sites whose permalinks are set to "Plain": every report failed with "No route was found matching the URL and
+  request method", because the app added its parameters to WordPress's REST address (`?rest_route=…`) with a
+  second "?". Download and printable-report links had the same problem. (Listed in the 1.7.0 release notes; added
+  here after the release.)
 * Calls without a service body (meeting searches and other region-wide activity) listed under "All my Areas" can
   now be opened; before, their details answered "Call not found".
 * "All my Areas" CSV and printable exports include region-wide activity, matching the dashboard they come from.
