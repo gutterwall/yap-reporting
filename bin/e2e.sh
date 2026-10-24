@@ -216,13 +216,18 @@ EOF
 	echo "}"
 } > "$W/nginx/nginx.conf"
 grep -q "fastcgi_pass unix:$W/run/fpm-yap.sock" "$W/nginx/nginx.conf" || fail "deploy/nginx.conf.example no longer has the expected fastcgi_pass line"
-"$NGINX" -e "$W/logs/nginx-early.log" -p "$W/nginx" -c "$W/nginx/nginx.conf" -t >/dev/null 2>"$W/logs/nginx-configtest.log" || { cat "$W/logs/nginx-configtest.log"; fail "nginx configuration"; }
-"$NGINX" -e "$W/logs/nginx-early.log" -p "$W/nginx" -c "$W/nginx/nginx.conf" >"$W/logs/nginx.out" 2>&1 &
+# nginx -e (1.19.5 and later) sends its early messages to our log instead of the unwritable /var/log/nginx; older
+# versions (Ubuntu 22.04, AlmaLinux 8) have no -e and only log an alert there.
+NGINX_EARLY=()
+"$NGINX" -h 2>&1 | grep -q -- '-e filename' && NGINX_EARLY=(-e "$W/logs/nginx-early.log")
+"$NGINX" "${NGINX_EARLY[@]}" -p "$W/nginx" -c "$W/nginx/nginx.conf" -t >/dev/null 2>"$W/logs/nginx-configtest.log" || { cat "$W/logs/nginx-configtest.log"; fail "nginx configuration"; }
+"$NGINX" "${NGINX_EARLY[@]}" -p "$W/nginx" -c "$W/nginx/nginx.conf" >"$W/logs/nginx.out" 2>&1 &
 PIDS+=($!)
 for i in $(seq 1 50); do
 	curl -s -o /dev/null --cacert "$W/tls/ca.pem" "https://127.0.0.1:$HTTPS_APACHE/" && curl -s -o /dev/null --cacert "$W/tls/ca.pem" "https://127.0.0.1:$HTTPS_NGINX/" && [ -S "$W/run/fpm-yap.sock" ] && [ -S "$W/run/fpm-wp.sock" ] && break
 	sleep 0.2
 done
+curl -s -o /dev/null --cacert "$W/tls/ca.pem" "https://127.0.0.1:$HTTPS_NGINX/" || { cat "$W/logs/nginx.out"; fail "nginx did not start"; }
 pass "Apache $("$APACHE" -v | sed -n 's/Server version: Apache\/\([0-9.]*\).*/\1/p'), nginx $("$NGINX" -v 2>&1 | sed 's/.*nginx\///'), PHP-FPM $(php -r 'echo PHP_VERSION;')"
 
 # GET with curl; prints "<status> <body>".
