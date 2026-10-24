@@ -132,17 +132,23 @@ class Browser:
         raise TimeoutError(check + '\n' + (self.js('document.body ? document.body.innerText.slice(0, 1500) : ""') or ''))
 
     def go(self, url):
+        # Mark the current page: readyState is already "complete" there, so without the mark the wait could pass
+        # before the new page has replaced it.
+        self.js('window.__e2eLeaving = true')
         self.call('Page.navigate', url=url)
-        time.sleep(0.3)
-        self.wait('document.readyState === "complete"')
+        self.wait('!window.__e2eLeaving && document.readyState === "complete"')
 
     def login(self, user, password):
         self.call('Network.clearBrowserCookies')
         self.go(SITE + '/wp-login.php')
         self.wait('!!document.getElementById("wp-submit")')
-        self.js(f'document.getElementById("user_login").value={json.dumps(user)};'
+        # Submit from a jQuery ready callback, so it runs after WordPress's own: user-profile.js, which wp-login.php
+        # loads, sets up its form there, and its beforeunload handler throws if the page is left before that.
+        self.js('(function () { var submit = function () {'
+                f'document.getElementById("user_login").value={json.dumps(user)};'
                 f'document.getElementById("user_pass").value={json.dumps(password)};'
-                'document.getElementById("wp-submit").click(); true')
+                'document.getElementById("wp-submit").click(); };'
+                'window.jQuery ? jQuery(submit) : submit(); })(); true')
         time.sleep(0.5)
         self.wait('document.readyState === "complete" && !location.href.includes("wp-login.php")')
 
