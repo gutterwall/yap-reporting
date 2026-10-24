@@ -48,8 +48,8 @@ php fake-yap/bin/fake-yap expected --from=2026-09-01 --to=2026-09-30 --areas=100
 | `bin/e2e.sh <dir>` | the release zips on Apache (`.htaccess` only) and nginx (`deploy/nginx.conf.example`) over HTTPS, a WordPress site on the default block theme, headless Chrome as each kind of user | Apache, nginx, PHP-FPM, WP-CLI, Chrome, MySQL (see the script's header) |
 | `vendor/bin/phpcs`, `vendor/bin/phpstan analyse` | WordPress security rules and PHP 8.1+ compatibility; static analysis | `composer install` |
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of them on every push: PHP 8.1 to 8.4, MySQL 8.0
-and 8.4, MariaDB 10.6 and 11.4, the oldest supported and the latest WordPress, single site and multisite.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of them on every push: PHP 8.1 to 8.5, MySQL 8.0
+and 8.4, MariaDB 10.6, 11.4 and 11.8, the oldest supported and the latest WordPress, single site and multisite.
 
 ## Releasing
 

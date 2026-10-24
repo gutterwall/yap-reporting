@@ -5,7 +5,6 @@ use YAPR\Rest;
 return array(
 	'public payload keeps only dashboard figures' => function () {
 		$m   = new ReflectionMethod( Reports::class, 'public_filter' );
-		$m->setAccessible( true );
 		$out = $m->invoke( null, 'area-dashboard', array(
 			'data' => array( 'current' => array( 'volunteer_calls' => array( 'value' => 3 ), 'answered_by' => 'x', 'labels' => array() ) ),
 			'meta' => array( 'range' => array(), 'service_bodies' => array( 'service_body_ids' => array( 10 ) ) ),

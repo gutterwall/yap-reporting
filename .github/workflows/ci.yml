@@ -3,8 +3,8 @@
 # Every push and pull request:
 #   lint       coding standards (WordPress security rules, PHP 8.1+ compatibility), PHPStan, dependency audit,
 #              secret scan, and the release build (versions agree, zips and checksums)
-#   unit       both packages' own tests on PHP 8.1-8.4
-#   service    the webservice against the fake YAP database on MySQL 8.0/8.4 and MariaDB 10.6/11.4, under a UTC
+#   unit       both packages' own tests on PHP 8.1-8.5
+#   service    the webservice against the fake YAP database on MySQL 8.0/8.4 and MariaDB 10.6/11.4/11.8, under a UTC
 #              server and one four hours behind, as a database account limited to the documented columns
 #   wordpress  the plugin on the WordPress test suite (oldest supported and latest WordPress, single site and
 #              multisite), talking to the real webservice code over the fake backend
@@ -82,7 +82,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.1', '8.2', '8.3', '8.4']
+        php: ['8.1', '8.2', '8.3', '8.4', '8.5']
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
@@ -106,6 +106,7 @@ jobs:
           - { php: '8.4', db: 'mysql:8.4' }
           - { php: '8.3', db: 'mariadb:10.6' }
           - { php: '8.3', db: 'mariadb:11.4' }
+          - { php: '8.5', db: 'mariadb:11.8' }
     services:
       db:
         image: ${{ matrix.db }}
@@ -143,6 +144,8 @@ jobs:
           - { php: '8.3', wp: 'latest', multisite: '0', db: 'mysql:8.0' }
           - { php: '8.3', wp: 'latest', multisite: '1', db: 'mysql:8.0' }
           - { php: '8.4', wp: 'latest', multisite: '0', db: 'mariadb:11.4' }
+          - { php: '8.5', wp: 'latest', multisite: '0', db: 'mariadb:11.8' }
+          - { php: '8.5', wp: 'latest', multisite: '1', db: 'mariadb:11.8' }
     services:
       db:
         image: ${{ matrix.db }}

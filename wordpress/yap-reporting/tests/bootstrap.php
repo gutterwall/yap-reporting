@@ -52,7 +52,6 @@ spl_autoload_register( static function ( $class ) {
 /** Seed the Areas repository without a database. */
 function yapr_seed_areas( array $rows ): void {
 	$ref = new ReflectionProperty( YAPR\Areas::class, 'cache' );
-	$ref->setAccessible( true );
 	$out = array();
 	foreach ( $rows as $r ) {
 		$out[ $r[0] ] = array( 'id' => $r[0], 'parent_id' => $r[1], 'name' => $r[2], 'type' => $r[3], 'managed' => $r[4], 'present_in_bmlt' => true );
