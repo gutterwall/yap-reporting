@@ -70,7 +70,7 @@ jobs:
       - name: Release build
         # Tags build the release; other pushes build test zips of the same version, marked as development builds.
         run: bin/build.sh $([ "$GITHUB_REF_TYPE" = tag ] || echo --dev)
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: yap-reporting-zips
           path: dist/yap-reporting-*.zip*
@@ -115,7 +115,7 @@ jobs:
           MARIADB_ROOT_PASSWORD: root
         ports: ['3306:3306']
         options: >-
-          --health-cmd="mysqladmin ping -proot || mariadb-admin ping -proot"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot || mariadb-admin ping -h 127.0.0.1 -proot"
           --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@v5
@@ -154,7 +154,7 @@ jobs:
           MARIADB_ROOT_PASSWORD: root
         ports: ['3306:3306']
         options: >-
-          --health-cmd="mysqladmin ping -proot || mariadb-admin ping -proot"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot || mariadb-admin ping -h 127.0.0.1 -proot"
           --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@v5
@@ -186,7 +186,7 @@ jobs:
           MYSQL_ROOT_PASSWORD: root
         ports: ['3306:3306']
         options: >-
-          --health-cmd="mysqladmin ping -proot"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
           --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@v5
@@ -208,7 +208,7 @@ jobs:
           curl -fsSL --retry 5 --retry-delay 5 -o /tmp/wp.sha512 "$URL.sha512"
           echo "$(cat /tmp/wp.sha512)  /tmp/wp.phar" | sha512sum -c -
           sudo install -m 755 /tmp/wp.phar /usr/local/bin/wp
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: yap-reporting-zips
           path: dist
@@ -241,7 +241,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: yap-reporting-zips
           path: dist
