@@ -33,6 +33,10 @@ return [
         }
         $all = implode("\n", $bodies);
         Assert::true(strlen($all) > 50000, 'responses were collected');
+        // Call and volunteer ids are HMACs keyed with this run's random secret, so now and then one contains a
+        // forbidden digit run (22801, 55501..) by chance. They are known not to carry data: look past them.
+        $all = preg_replace('/\b(c_\d{8}_[0-9a-f]{20}|v_[0-9a-f]{16})\b/', '<id>', $all, -1, $ids);
+        Assert::true($ids > 60, 'pseudonymous ids were recognised and set aside');
         foreach ([
             'caller number' => '/55501(5\d|[6-9]\d)/', 'helpline line number' => '/55501(0[0-5])/', 'Twilio call id' => '/\b(CA|SM|CF)[0-9a-f]{32}\b/',
             'recording URL' => '/Recordings|api\.twilio/', 'caller location' => '/Springfield|22801|latitude/', 'canary' => '/CANARY/i', 'full volunteer number' => '/5555550(11|12|13|14|15)\d/',
